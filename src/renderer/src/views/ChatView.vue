@@ -912,10 +912,13 @@ function handleGatewayMessage(event: {
     return
   }
 
-  if (activeRunId.value !== event.runId) {
+  if (activeRunId.value && activeRunId.value !== event.runId) {
     activeAssistantMessage.value = null
     activeRunId.value = null
     activeToolStatusMessages.clear()
+  }
+
+  if (!activeRunId.value && event.runId) {
     activeRunId.value = event.runId ?? null
   }
 
@@ -1616,6 +1619,7 @@ async function sendMessage() {
     startNewChat()
   }
 
+  resetActiveStreamingState()
   messages.value.push(buildDisplayMessage('user', content))
   createStreamingAssistantPlaceholder()
   draftText.value = ''
@@ -1651,7 +1655,6 @@ async function sendMessage() {
   }
 
   isSending.value = true
-  resetActiveStreamingState()
 
   try {
     await client.sendChatMessage(content, {

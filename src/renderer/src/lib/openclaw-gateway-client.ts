@@ -27,6 +27,8 @@ type ChatEventPayload = {
   toolStreamPhase?: string
   role?: string
   delta?: string
+  stream?: string
+  data?: Record<string, any>
 }
 
 type DeviceIdentity = {
@@ -729,7 +731,63 @@ export class OpenClawGatewayClient {
       return
     }
 
-    if (eventName !== 'chat' || !payload) {
+    if (!payload) {
+      return
+    }
+
+    if (eventName === 'agent') {
+      const stream = payload.stream
+      const data = payload.data || {}
+
+      if (stream === 'tool') {
+        const toolCallId = data.toolCallId || data.tool_call_id
+        const toolName = data.name || data.toolName || data.tool_name
+        const toolArgs = data.args || data.toolArgs || data.tool_args
+        const toolOutput = data.result || data.text || data.toolOutput || data.tool_output
+        const phase = data.phase || data.toolStreamPhase
+
+        this.onMessage({
+          runId: payload.runId,
+          sessionKey: payload.sessionKey,
+          state: 'tool_stream',
+          text: '',
+          toolCallId,
+          toolName,
+          toolArgs,
+          toolOutput,
+          toolStreamPhase: phase,
+          message: {
+            role: 'assistant',
+            content: [
+              ...(toolCallId && toolName
+                ? [
+                    {
+                      type: 'tool_use',
+                      name: toolName,
+                      arguments: toolArgs || {},
+                      toolCallId,
+                    },
+                  ]
+                : []),
+              ...(toolCallId && toolName && toolOutput
+                ? [
+                    {
+                      type: 'tool_result',
+                      name: toolName,
+                      text: toolOutput,
+                      toolCallId,
+                    },
+                  ]
+                : []),
+            ],
+          },
+        })
+      }
+
+      return
+    }
+
+    if (eventName !== 'chat') {
       return
     }
 
