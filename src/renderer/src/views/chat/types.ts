@@ -5,6 +5,14 @@ export interface ToolCard {
   detail?: string
   text?: string
   completed?: boolean
+  aborted?: boolean
+  toolCallId?: string
+}
+
+export interface ChatStatusMeta {
+  kind: 'thinking' | 'received' | 'tool'
+  state?: 'pending' | 'running' | 'completed'
+  toolCard?: ToolCard
 }
 
 export interface ChatMessage {
@@ -14,6 +22,18 @@ export interface ChatMessage {
   title?: string
   toolCards?: ToolCard[]
   isStreaming?: boolean
+  statusMeta?: ChatStatusMeta
+  thinkingState?: 'pending' | 'running' | 'completed'
+  thinkingLog?: Array<
+    | {
+        type: 'text'
+        text: string
+      }
+    | {
+        type: 'tool'
+        toolCallId: string
+      }
+  >
 }
 
 export interface ChatSessionItem {

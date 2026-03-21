@@ -2,92 +2,127 @@
   <div ref="scrollContainerRef" class="qclaw-chat-scroll">
     <div class="qclaw-messages">
       <article
-        v-for="message in messages"
-        :key="message.id"
-        :class="['qclaw-message', `qclaw-message-${getDisplayRole(message)}`]"
+        v-for="item in groupedItems"
+        :key="item.id"
+        :class="['qclaw-message', `qclaw-message-${item.role}`]"
       >
-        <template v-if="isStandaloneToolMessage(message)">
-          <div class="qclaw-tool-cards qclaw-tool-cards-standalone">
-            <div
-              v-for="(toolCard, toolCardIndex) in message.toolCards"
-              :key="`${message.id}-tool-${toolCardIndex}`"
-              class="qclaw-tool-card"
+        <div
+          v-if="item.type === 'user'"
+          :class="['qclaw-bubble', 'qclaw-bubble-user']"
+        >
+          <p class="qclaw-message-plain">
+            {{ item.message.text }}
+          </p>
+        </div>
+
+        <div v-else class="qclaw-assistant-group">
+          <div
+            v-if="item.chain.hasThinkingHeader || item.chain.entries.length > 0"
+            class="thinking-chain"
+          >
+            <button
+              type="button"
+              class="thinking-chain__toggle"
+              @click="toggleGroup(item.id)"
             >
-              <div class="qclaw-tool-card-header">
-                <div class="qclaw-tool-card-title">
-                  <span class="qclaw-tool-card-icon" v-html="getToolCardIcon(toolCard.name)"></span>
-                  <span>{{ formatToolCardName(toolCard.name) }}</span>
-                </div>
+              <span class="thinking-chain__toggle-label">
+                {{ item.chain.isStreaming ? '正在思考' : '已完成思考' }}
+              </span>
+              <svg
+                :class="[
+                  'thinking-chain__toggle-arrow',
+                  isGroupExpanded(item.id) && 'thinking-chain__toggle-arrow--expanded',
+                ]"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+              >
+                <polyline points="6 9 12 15 18 9"></polyline>
+              </svg>
+            </button>
 
-                <span v-if="isToolCardCompleted(toolCard)" class="qclaw-tool-card-status">
-                  <svg viewBox="0 0 24 24" focusable="false">
-                    <polyline points="20 6 9 17 4 12"></polyline>
-                  </svg>
-                </span>
-
-                <button
-                  v-else-if="toolCard.text"
-                  type="button"
-                  class="qclaw-tool-card-action"
-                  @click="openToolCardResult(toolCard)"
+            <div v-if="isGroupExpanded(item.id)" class="thinking-chain__content">
+              <div class="thinking-chain__timeline">
+                <div
+                  v-for="(entry, entryIndex) in item.chain.entries"
+                  :key="`${item.id}-entry-${entryIndex}`"
+                  class="thinking-chain__step"
                 >
-                  View
-                </button>
+                  <div class="thinking-chain__dot-wrapper">
+                    <div
+                      :class="[
+                        'thinking-chain__dot',
+                        entry.type === 'tool' && !entry.completed && 'thinking-chain__dot--active',
+                      ]"
+                    ></div>
+                  </div>
+
+                  <div class="thinking-chain__step-content">
+                    <p v-if="entry.type === 'text'" class="thinking-chain__text">
+                      {{ entry.text }}
+                    </p>
+
+                    <template v-else>
+                      <button
+                        type="button"
+                        class="thinking-chain__tool"
+                        @click="toggleToolEntry(item.id, entryIndex)"
+                      >
+                        <span
+                          class="thinking-chain__tool-icon"
+                          v-html="getToolCardIcon(entry.toolCard.name)"
+                        ></span>
+                        <span class="thinking-chain__tool-summary">
+                          {{ formatToolStatusText(entry.toolCard) }}
+                        </span>
+                        <svg
+                          v-if="entry.detail"
+                          :class="[
+                            'thinking-chain__tool-arrow',
+                            isToolEntryExpanded(item.id, entryIndex) &&
+                              'thinking-chain__tool-arrow--expanded',
+                          ]"
+                          viewBox="0 0 24 24"
+                          fill="none"
+                          stroke="currentColor"
+                          stroke-width="2"
+                          stroke-linecap="round"
+                          stroke-linejoin="round"
+                        >
+                          <polyline points="9 6 15 12 9 18"></polyline>
+                        </svg>
+                      </button>
+
+                      <div
+                        v-if="entry.detail && isToolEntryExpanded(item.id, entryIndex)"
+                        class="thinking-chain__tool-detail"
+                      >
+                        <div class="thinking-chain__tool-detail-text">{{ entry.detail }}</div>
+                      </div>
+                    </template>
+                  </div>
+                </div>
               </div>
 
-              <div v-if="toolCard.detail" class="qclaw-tool-card-detail">{{ toolCard.detail }}</div>
-              <div v-if="showToolCardCompletedLabel(toolCard)" class="qclaw-tool-card-status-text">
-                Completed
-              </div>
-              <div v-else-if="isInlineToolCardText(toolCard)" class="qclaw-tool-card-inline">
-                {{ toolCard.text }}
-              </div>
-              <div v-else-if="toolCard.text" class="qclaw-tool-card-preview">
-                {{ getToolCardPreview(toolCard.text) }}
+              <div v-if="item.chain.isStreaming" class="thinking-chain__loading">
+                <span class="thinking-chain__loading-dot"></span>
+                <span class="thinking-chain__loading-dot"></span>
+                <span class="thinking-chain__loading-dot"></span>
               </div>
             </div>
           </div>
-        </template>
-
-        <div v-else :class="['qclaw-bubble', `qclaw-bubble-${getDisplayRole(message)}`]">
-          <template v-if="message.title">
-            <h3 class="qclaw-message-title">{{ message.title }}</h3>
-          </template>
 
           <div
-            v-if="message.role === 'assistant'"
-            class="qclaw-message-text qclaw-message-markdown"
-            v-html="renderMessageHtml(message)"
-          ></div>
-
-          <p v-else class="qclaw-message-plain">
-            {{ message.text }}
-          </p>
-
-          <div v-if="message.toolCards?.length" class="qclaw-tool-cards">
+            v-if="item.finalAssistantMessage"
+            :class="['qclaw-bubble', 'qclaw-bubble-assistant']"
+          >
             <div
-              v-for="(toolCard, toolCardIndex) in message.toolCards"
-              :key="`${message.id}-inline-tool-${toolCardIndex}`"
-              class="qclaw-tool-card"
-            >
-              <div class="qclaw-tool-card-header">
-                <div class="qclaw-tool-card-title">
-                  <span class="qclaw-tool-card-icon" v-html="getToolCardIcon(toolCard.name)"></span>
-                  <span>{{ formatToolCardName(toolCard.name) }}</span>
-                </div>
-
-                <span v-if="isToolCardCompleted(toolCard)" class="qclaw-tool-card-status">
-                  <svg viewBox="0 0 24 24" focusable="false">
-                    <polyline points="20 6 9 17 4 12"></polyline>
-                  </svg>
-                </span>
-              </div>
-
-              <div v-if="toolCard.detail" class="qclaw-tool-card-detail">{{ toolCard.detail }}</div>
-              <div v-if="isToolCardCompleted(toolCard)" class="qclaw-tool-card-status-text">
-                Completed
-              </div>
-            </div>
+              class="qclaw-message-text qclaw-message-markdown"
+              v-html="renderMessageHtml(item.finalAssistantMessage)"
+            ></div>
           </div>
         </div>
       </article>
@@ -96,12 +131,43 @@
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue'
+import { computed, ref } from 'vue'
 import type { ChatMessage, ToolCard } from '../types'
+
+interface UserGroupItem {
+  id: string
+  type: 'user'
+  role: 'user'
+  message: ChatMessage
+}
+
+interface ChainEntry {
+  type: 'text' | 'tool'
+  text?: string
+  toolCard?: ToolCard
+  detail?: string
+  completed?: boolean
+  aborted?: boolean
+}
+
+interface AssistantGroupItem {
+  id: string
+  type: 'assistant-group'
+  role: 'assistant'
+  finalAssistantMessage: ChatMessage | null
+  chain: {
+    hasThinkingHeader: boolean
+    isStreaming: boolean
+    entries: ChainEntry[]
+  }
+}
+
+type GroupedItem = UserGroupItem | AssistantGroupItem
 
 const props = defineProps<{
   messages: ChatMessage[]
   getDisplayRole: (message: ChatMessage) => string
+  isStatusMessage: (message: ChatMessage) => boolean
   isStandaloneToolMessage: (message: ChatMessage) => boolean
   isToolCardCompleted: (toolCard: ToolCard) => boolean
   showToolCardCompletedLabel: (toolCard: ToolCard) => boolean
@@ -109,6 +175,8 @@ const props = defineProps<{
   getToolCardPreview: (text: string) => string
   getToolCardIcon: (toolName: string) => string
   formatToolCardName: (toolName: string) => string
+  formatToolStatusText: (toolCard?: ToolCard | null) => string
+  formatToolDetailText: (toolCard?: ToolCard | null) => string
   renderMessageHtml: (message: ChatMessage) => string
   openToolCardResult: (toolCard: ToolCard) => void
 }>()
@@ -116,6 +184,256 @@ const props = defineProps<{
 void props
 
 const scrollContainerRef = ref<HTMLElement | null>(null)
+const collapsedGroupIds = ref<Set<string>>(new Set())
+const expandedToolEntryIds = ref<Set<string>>(new Set())
+
+function normalizeToolDetail(toolCard: ToolCard) {
+  const formattedDetail = props.formatToolDetailText(toolCard)
+  if (formattedDetail) {
+    return formattedDetail
+  }
+  if (toolCard.detail) {
+    return toolCard.detail
+  }
+  if (toolCard.text?.trim()) {
+    return toolCard.text.trim()
+  }
+  return ''
+}
+
+function buildAssistantGroup(messages: ChatMessage[], fallbackIndex: number): AssistantGroupItem {
+  const entries: ChainEntry[] = []
+  let hasThinkingHeader = false
+  let isStreaming = false
+  let finalAssistantMessage: ChatMessage | null = null
+  const toolCardMap = new Map<string, ToolCard>()
+
+  for (const message of messages) {
+    if (message.isStreaming) {
+      isStreaming = true
+    }
+
+    if (message.thinkingState === 'pending' || message.thinkingState === 'running') {
+      hasThinkingHeader = true
+    }
+
+    if (Array.isArray(message.toolCards)) {
+      for (const toolCard of message.toolCards) {
+        const toolKey =
+          toolCard.toolCallId ||
+          `${toolCard.name}:${toolCard.detail || ''}:${JSON.stringify(toolCard.args || {})}`
+        toolCardMap.set(toolKey, toolCard)
+      }
+    }
+  }
+
+  for (const message of messages) {
+    if (Array.isArray(message.thinkingLog) && message.thinkingLog.length > 0) {
+      hasThinkingHeader = true
+
+      for (const logEntry of message.thinkingLog) {
+        if (logEntry.type === 'text') {
+          entries.push({
+            type: 'text',
+            text: logEntry.text,
+          })
+          continue
+        }
+
+        const toolCard = toolCardMap.get(logEntry.toolCallId)
+        if (!toolCard) {
+          continue
+        }
+
+        entries.push({
+          type: 'tool',
+          toolCard,
+          detail: normalizeToolDetail(toolCard),
+          completed: !!toolCard.completed || toolCard.kind === 'result',
+          aborted: !!toolCard.aborted,
+        })
+      }
+    }
+  }
+
+  if (entries.length > 0) {
+    for (const message of messages) {
+      if (message.role === 'assistant' && message.text.trim()) {
+        finalAssistantMessage = message
+      }
+    }
+  }
+
+  if (entries.length > 0) {
+    const id =
+      messages.map((message) => message.id).join('-') ||
+      `assistant-group-${fallbackIndex}-${Math.random().toString(36).slice(2, 8)}`
+
+    return {
+      id,
+      type: 'assistant-group',
+      role: 'assistant',
+      finalAssistantMessage,
+      chain: {
+        hasThinkingHeader,
+        isStreaming,
+        entries,
+      },
+    }
+  }
+
+  for (const message of messages) {
+    if (props.isStatusMessage(message)) {
+      const statusKind = message.statusMeta?.kind
+      if (statusKind === 'thinking') {
+        hasThinkingHeader = true
+        if (message.statusMeta?.state !== 'completed') {
+          isStreaming = true
+        }
+        continue
+      }
+
+      if (statusKind === 'received' && message.text.trim()) {
+        entries.push({
+          type: 'text',
+          text: message.text.trim(),
+        })
+        continue
+      }
+
+      if (statusKind === 'tool' && message.statusMeta?.toolCard) {
+        entries.push({
+          type: 'tool',
+          toolCard: message.statusMeta.toolCard,
+          detail: normalizeToolDetail(message.statusMeta.toolCard),
+          completed:
+            message.statusMeta.state === 'completed' ||
+            !!message.statusMeta.toolCard.completed,
+          aborted: message.statusMeta.state === 'aborted',
+        })
+        continue
+      }
+    }
+
+    if (Array.isArray(message.toolCards) && message.toolCards.length > 0) {
+      for (const toolCard of message.toolCards) {
+        entries.push({
+          type: 'tool',
+          toolCard,
+          detail: normalizeToolDetail(toolCard),
+          completed: !!toolCard.completed || toolCard.kind === 'result',
+          aborted: false,
+        })
+      }
+    }
+
+    if (message.role === 'assistant' && message.text.trim()) {
+      finalAssistantMessage = message
+    }
+  }
+
+  const id =
+    messages.map((message) => message.id).join('-') ||
+    `assistant-group-${fallbackIndex}-${Math.random().toString(36).slice(2, 8)}`
+
+  return {
+    id,
+    type: 'assistant-group',
+    role: 'assistant',
+    finalAssistantMessage,
+    chain: {
+      hasThinkingHeader,
+      isStreaming,
+      entries,
+    },
+  }
+}
+
+const groupedItems = computed<GroupedItem[]>(() => {
+  const items: GroupedItem[] = []
+  let pendingAssistantMessages: ChatMessage[] = []
+
+  const flushAssistantGroup = () => {
+    if (!pendingAssistantMessages.length) {
+      return
+    }
+    items.push(buildAssistantGroup(pendingAssistantMessages, items.length))
+    pendingAssistantMessages = []
+  }
+
+  for (const message of props.messages) {
+    if (message.role === 'user') {
+      flushAssistantGroup()
+      items.push({
+        id: message.id,
+        type: 'user',
+        role: 'user',
+        message,
+      })
+      continue
+    }
+
+    pendingAssistantMessages.push(message)
+  }
+
+  flushAssistantGroup()
+  return items
+})
+
+function isGroupExpanded(groupId: string) {
+  const group = groupedItems.value.find(
+    (item): item is AssistantGroupItem => item.type === 'assistant-group' && item.id === groupId,
+  )
+  if (!group) {
+    return false
+  }
+  if (group.chain.isStreaming) {
+    return true
+  }
+  return !collapsedGroupIds.value.has(groupId)
+}
+
+function toggleGroup(groupId: string) {
+  const next = new Set(collapsedGroupIds.value)
+  if (next.has(groupId)) {
+    next.delete(groupId)
+  } else {
+    next.add(groupId)
+  }
+  collapsedGroupIds.value = next
+}
+
+function getToolEntryKey(groupId: string, entryIndex: number) {
+  return `${groupId}:${entryIndex}`
+}
+
+function isToolEntryExpanded(groupId: string, entryIndex: number) {
+  const key = getToolEntryKey(groupId, entryIndex)
+  if (expandedToolEntryIds.value.has(key)) {
+    return true
+  }
+
+  const group = groupedItems.value.find(
+    (item): item is AssistantGroupItem => item.type === 'assistant-group' && item.id === groupId,
+  )
+  const entry = group?.chain.entries[entryIndex]
+  if (!entry || entry.type !== 'tool') {
+    return false
+  }
+
+  return !!entry.detail && !entry.completed && !entry.aborted
+}
+
+function toggleToolEntry(groupId: string, entryIndex: number) {
+  const next = new Set(expandedToolEntryIds.value)
+  const key = getToolEntryKey(groupId, entryIndex)
+  if (next.has(key)) {
+    next.delete(key)
+  } else {
+    next.add(key)
+  }
+  expandedToolEntryIds.value = next
+}
 
 function scrollToBottom() {
   const messageList = scrollContainerRef.value

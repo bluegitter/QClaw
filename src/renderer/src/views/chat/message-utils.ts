@@ -3,6 +3,7 @@ import hljs from 'highlight.js'
 import MarkdownIt from 'markdown-it'
 import { ref, type Ref } from 'vue'
 import {
+  describeToolCall,
   extractToolCardsFromMessage,
   normalizeChatHistoryMessages,
 } from '../../../assets/chat-history-state.js'
@@ -49,6 +50,49 @@ function escapeHtml(text: string) {
     .replaceAll('>', '&gt;')
     .replaceAll('"', '&quot;')
     .replaceAll("'", '&#39;')
+}
+
+function getPathLikeValue(toolArgs?: Record<string, any> | null) {
+  if (!toolArgs || typeof toolArgs !== 'object') {
+    return ''
+  }
+
+  const preferredKeys = [
+    'path',
+    'file',
+    'filePath',
+    'filepath',
+    'filename',
+    'name',
+    'target',
+    'source',
+  ]
+
+  for (const key of preferredKeys) {
+    const value = toolArgs[key]
+    if (typeof value === 'string' && value.trim()) {
+      return value.trim()
+    }
+  }
+
+  for (const value of Object.values(toolArgs)) {
+    if (typeof value === 'string' && value.trim()) {
+      return value.trim()
+    }
+  }
+
+  return ''
+}
+
+function getDisplayFileName(pathLike: string) {
+  const trimmed = pathLike.trim()
+  if (!trimmed) {
+    return ''
+  }
+
+  const normalized = trimmed.replace(/\\/g, '/')
+  const parts = normalized.split('/').filter(Boolean)
+  return parts[parts.length - 1] || trimmed
 }
 
 export function useChatMessageUtils(currentSessionKey: Ref<string>) {
@@ -102,12 +146,37 @@ export function useChatMessageUtils(currentSessionKey: Ref<string>) {
     }
   }
 
+  function buildStatusMessage(
+    kind: 'thinking' | 'received' | 'tool',
+    options: {
+      text?: string
+      state?: 'pending' | 'running' | 'completed'
+      toolCard?: ToolCard
+    } = {},
+  ): ChatMessage {
+    return {
+      id: `status-${kind}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+      role: 'system',
+      text: options.text || '',
+      toolCards: [],
+      statusMeta: {
+        kind,
+        state: options.state,
+        toolCard: options.toolCard,
+      },
+    }
+  }
+
   function updateAssistantMessageText(message: ChatMessage, text: string) {
     message.text = text || ' '
   }
 
   function renderMessageHtml(message: ChatMessage) {
     return message.role === 'assistant' ? renderMarkdown(message.text || ' ') : renderPlainText(message.text)
+  }
+
+  function isStatusMessage(message: ChatMessage) {
+    return !!message.statusMeta
   }
 
   function isToolResultMessage(message: any) {
@@ -216,6 +285,62 @@ export function useChatMessageUtils(currentSessionKey: Ref<string>) {
           .replace(/([a-z])([A-Z])/g, '$1 $2')
           .replace(/\b\w/g, (char) => char.toUpperCase())
       : 'Tool'
+  }
+
+  function formatToolStatusText(toolCard?: ToolCard | null) {
+    if (!toolCard) {
+      return '执行了工具调用'
+    }
+
+    const detail = toolCard.detail || describeToolCall(toolCard.name, toolCard.args)
+    const normalizedName = String(toolCard.name || '').toLowerCase()
+
+    if (normalizedName === 'read' || normalizedName === 'read_file') {
+      const pathLike = getPathLikeValue(toolCard.args) || detail
+      const fileName = getDisplayFileName(pathLike)
+      return fileName ? `查看了 ${fileName}` : '查看了文件'
+    }
+
+    if (normalizedName === 'write' || normalizedName === 'write_file' || normalizedName === 'edit') {
+      const pathLike = getPathLikeValue(toolCard.args) || detail
+      const fileName = getDisplayFileName(pathLike)
+      return fileName ? `修改了 ${fileName}` : '修改了文件'
+    }
+
+    if (normalizedName === 'search' || normalizedName === 'grep') {
+      return detail ? `搜索了 ${detail}` : '执行了搜索'
+    }
+
+    if (normalizedName === 'bash' || normalizedName === 'execute' || normalizedName === 'shell') {
+      return detail ? `执行了 ${detail}` : '执行了命令'
+    }
+
+    if (normalizedName === 'web' || normalizedName === 'fetch' || normalizedName === 'browser') {
+      return detail ? `访问了 ${detail}` : '访问了网页'
+    }
+
+    const prettyName = formatToolCardName(toolCard.name)
+    return detail ? `${prettyName}: ${detail}` : `调用了 ${prettyName}`
+  }
+
+  function formatToolDetailText(toolCard?: ToolCard | null) {
+    if (!toolCard) {
+      return ''
+    }
+
+    const normalizedName = String(toolCard.name || '').toLowerCase()
+    const detail = toolCard.detail || describeToolCall(toolCard.name, toolCard.args)
+    const pathLike = getPathLikeValue(toolCard.args) || detail
+
+    if (normalizedName === 'read' || normalizedName === 'read_file') {
+      return pathLike ? `from ${pathLike}` : ''
+    }
+
+    if (normalizedName === 'write' || normalizedName === 'write_file' || normalizedName === 'edit') {
+      return pathLike ? `to ${pathLike}` : ''
+    }
+
+    return detail || toolCard.text?.trim() || ''
   }
 
   function mergeStreamingText(previousText: string, incomingText: string) {
@@ -351,8 +476,10 @@ export function useChatMessageUtils(currentSessionKey: Ref<string>) {
     toolCardCopyMessage,
     toolCardCopyMessageLevel,
     buildDisplayMessage,
+    buildStatusMessage,
     updateAssistantMessageText,
     renderMessageHtml,
+    isStatusMessage,
     isToolResultMessage,
     getDisplayRole,
     isStandaloneToolMessage,
@@ -366,6 +493,8 @@ export function useChatMessageUtils(currentSessionKey: Ref<string>) {
     copyToolCardResult,
     getToolCardIcon,
     formatToolCardName,
+    formatToolStatusText,
+    formatToolDetailText,
     mergeStreamingText,
     extractMessageText,
     mapRole,

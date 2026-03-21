@@ -20,6 +20,13 @@ type ChatEventPayload = {
   message?: any
   errorMessage?: string
   nonce?: string
+  toolCallId?: string
+  toolName?: string
+  toolArgs?: Record<string, unknown>
+  toolOutput?: string
+  toolStreamPhase?: string
+  role?: string
+  delta?: string
 }
 
 type DeviceIdentity = {
@@ -62,6 +69,13 @@ type GatewayClientOptions = {
     message?: any
     error?: boolean
     aborted?: boolean
+    delta?: string
+    toolCallId?: string
+    toolName?: string
+    toolArgs?: Record<string, unknown>
+    toolOutput?: string
+    toolStreamPhase?: string
+    role?: string
   }) => void
   onError?: (error: unknown) => void
 }
@@ -741,6 +755,55 @@ export class OpenClawGatewayClient {
       return
     }
 
+    if (payload.state === 'tool_stream') {
+      const toolCallId = payload.toolCallId
+      const toolName = payload.toolName || payload.message?.toolName || payload.message?.tool_name
+      const toolArgs = payload.toolArgs || payload.message?.toolArgs || payload.message?.tool_args
+      const toolOutput =
+        payload.toolOutput ||
+        payload.message?.toolOutput ||
+        payload.message?.tool_output ||
+        extractMessageText(payload.message)
+
+      const syntheticContent: any[] = []
+      if (toolCallId && toolName) {
+        syntheticContent.push({
+          type: 'tool_use',
+          name: toolName,
+          arguments: toolArgs || {},
+          toolCallId,
+        })
+      }
+      if (toolCallId && toolName && toolOutput) {
+        syntheticContent.push({
+          type: 'tool_result',
+          name: toolName,
+          text: toolOutput,
+          toolCallId,
+        })
+      }
+
+      this.onMessage({
+        runId: payload.runId,
+        sessionKey: payload.sessionKey,
+        state: 'tool_stream',
+        text: '',
+        toolCallId,
+        toolName,
+        toolArgs,
+        toolOutput,
+        toolStreamPhase: payload.toolStreamPhase,
+        message:
+          syntheticContent.length > 0
+            ? {
+                role: payload.role || 'assistant',
+                content: syntheticContent,
+              }
+            : payload.message,
+      })
+      return
+    }
+
     const text = extractMessageText(payload.message)
     this.onMessage({
       runId: payload.runId,
@@ -748,6 +811,8 @@ export class OpenClawGatewayClient {
       state: payload.state || 'delta',
       text,
       message: payload.message,
+      delta: payload.delta,
+      role: payload.role || payload.message?.role,
     })
   }
 

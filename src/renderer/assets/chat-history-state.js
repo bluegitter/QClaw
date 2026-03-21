@@ -49,6 +49,13 @@ export function extractToolCardsFromMessage(message, extractMessageText, isToolR
           args,
           detail: describeToolCall(item.name, args),
           completed: false,
+          aborted: false,
+          toolCallId:
+            item.toolCallId ||
+            item.tool_call_id ||
+            item.id ||
+            item.callId ||
+            undefined,
         })
       }
     }
@@ -67,12 +74,26 @@ export function extractToolCardsFromMessage(message, extractMessageText, isToolR
       if (existingCall) {
         existingCall.completed = true
         existingCall.text = resultText
+        existingCall.toolCallId =
+          existingCall.toolCallId ||
+          item.toolCallId ||
+          item.tool_call_id ||
+          item.id ||
+          item.callId ||
+          undefined
       } else {
         toolCards.push({
           kind: "result",
           name: toolName,
           text: resultText,
           completed: true,
+          aborted: false,
+          toolCallId:
+            item.toolCallId ||
+            item.tool_call_id ||
+            item.id ||
+            item.callId ||
+            undefined,
         })
       }
     }
@@ -89,6 +110,12 @@ export function extractToolCardsFromMessage(message, extractMessageText, isToolR
       name: toolName,
       text: resultText,
       completed: true,
+      aborted: false,
+      toolCallId:
+        message.toolCallId ||
+        message.tool_call_id ||
+        message.id ||
+        undefined,
     })
   }
 

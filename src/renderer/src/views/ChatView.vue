@@ -34,6 +34,7 @@
           ref="messageListRef"
           :messages="messages"
           :get-display-role="getDisplayRole"
+          :is-status-message="isStatusMessage"
           :is-standalone-tool-message="isStandaloneToolMessage"
           :is-tool-card-completed="isToolCardCompleted"
           :show-tool-card-completed-label="showToolCardCompletedLabel"
@@ -41,6 +42,8 @@
           :get-tool-card-preview="getToolCardPreview"
           :get-tool-card-icon="getToolCardIcon"
           :format-tool-card-name="formatToolCardName"
+          :format-tool-status-text="formatToolStatusText"
+          :format-tool-detail-text="formatToolDetailText"
           :render-message-html="renderMessageHtml"
           :open-tool-card-result="openToolCardResult"
         />
@@ -372,7 +375,7 @@ const activeAssistantMessage = ref<ChatMessage | null>(null)
 const activeRunId = ref<string | null>(null)
 const isCreatingChat = ref(false)
 const isConnectingGateway = ref(false)
-const activeToolMessageIndexes = new Map<string, number[]>()
+const activeToolStatusMessages = new Map<string, true>()
 const sessionLabelCache = new Map<string, string>()
 const sessionLabelPendingKeys = new Set<string>()
 const sessionAgentNameCache = new Map<string, string>()
@@ -457,6 +460,7 @@ const {
   updateAssistantMessageText,
   renderMessageHtml,
   isToolResultMessage,
+  isStatusMessage,
   getDisplayRole,
   isStandaloneToolMessage,
   isToolCardCompleted,
@@ -469,6 +473,8 @@ const {
   copyToolCardResult,
   getToolCardIcon,
   formatToolCardName,
+  formatToolStatusText,
+  formatToolDetailText,
   mergeStreamingText,
   extractMessageText,
   normalizeSessionLabel,
@@ -652,77 +658,165 @@ function scheduleGatewayReconnect(delay = 1500) {
 function resetActiveStreamingState() {
   activeAssistantMessage.value = null
   activeRunId.value = null
-  activeToolMessageIndexes.clear()
+  activeToolStatusMessages.clear()
 }
 
 function buildToolMessageKey(toolCard: ToolCard) {
+  if (toolCard.toolCallId) {
+    return toolCard.toolCallId
+  }
+
   const argsSignature = toolCard.args ? JSON.stringify(toolCard.args) : ''
   return `${toolCard.kind}:${toolCard.name}:${toolCard.detail || ''}:${argsSignature}`
 }
 
-function appendToolCardMessage(toolCard: ToolCard) {
-  const nextMessage: ChatMessage = {
-    id: `tool-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-    role: 'tool',
-    text: '',
-    toolCards: [{ ...toolCard }],
+function ensureAssistantThinkingLog(message: ChatMessage) {
+  if (!message.thinkingLog) {
+    message.thinkingLog = []
   }
+  return message.thinkingLog
+}
+
+function appendThinkingText(message: ChatMessage, text: string) {
+  const normalized = text.trim()
+  if (!normalized) {
+    return
+  }
+
+  const thinkingLog = ensureAssistantThinkingLog(message)
+  const lastEntry = thinkingLog[thinkingLog.length - 1]
+  if (lastEntry?.type === 'text' && lastEntry.text === normalized) {
+    return
+  }
+
+  thinkingLog.push({
+    type: 'text',
+    text: normalized,
+  })
+}
+
+function ensureToolThinkingEntry(message: ChatMessage, toolCard: ToolCard) {
+  const thinkingLog = ensureAssistantThinkingLog(message)
+  const toolCallId = buildToolMessageKey(toolCard)
+  if (!thinkingLog.some((entry) => entry.type === 'tool' && entry.toolCallId === toolCallId)) {
+    thinkingLog.push({
+      type: 'tool',
+      toolCallId,
+    })
+  }
+}
+
+function createStreamingAssistantPlaceholder() {
+  const nextMessage = buildDisplayMessage('assistant', '')
+  nextMessage.isStreaming = true
+  nextMessage.thinkingState = 'pending'
+  nextMessage.thinkingLog = []
+  nextMessage.toolCards = []
   messages.value.push(nextMessage)
-  const nextIndex = messages.value.length - 1
-  const key = buildToolMessageKey(toolCard)
-  const existingIndexes = activeToolMessageIndexes.get(key) || []
-  existingIndexes.push(nextIndex)
-  activeToolMessageIndexes.set(key, existingIndexes)
+  activeAssistantMessage.value = nextMessage
   return nextMessage
 }
 
-function findIncompleteToolMessageIndex(toolCard: ToolCard) {
-  for (let index = messages.value.length - 1; index >= 0; index -= 1) {
-    const message = messages.value[index]
-    const existingToolCard = message.toolCards?.[0]
-    if (!existingToolCard) continue
-    if (existingToolCard.kind !== 'call') continue
-    if (existingToolCard.name !== toolCard.name) continue
-    if (existingToolCard.completed) continue
-    return index
+function promoteThinkingMessageToReceived() {
+  if (!activeAssistantMessage.value) {
+    return
   }
-  return -1
+
+  activeAssistantMessage.value.thinkingState = 'running'
+  appendThinkingText(activeAssistantMessage.value, '我已收到你的请求，请稍后。')
+}
+
+function discardThinkingStatusMessage() {
+  const targetMessage = activeAssistantMessage.value
+  if (!targetMessage) {
+    return
+  }
+
+  const messageIndex = messages.value.findIndex((message) => message.id === targetMessage.id)
+  if (messageIndex >= 0) {
+    messages.value.splice(messageIndex, 1)
+  }
+  activeAssistantMessage.value = null
 }
 
 function upsertStreamingToolCards(nextToolCards: ToolCard[]) {
   for (const toolCard of nextToolCards) {
+    if (activeAssistantMessage.value) {
+      ensureToolThinkingEntry(activeAssistantMessage.value, toolCard)
+      const toolCards = activeAssistantMessage.value.toolCards || []
+      const existingIndex = toolCards.findIndex(
+        (existingToolCard) =>
+          buildToolMessageKey(existingToolCard) === buildToolMessageKey(toolCard),
+      )
+
+      if (existingIndex >= 0) {
+        toolCards[existingIndex] = {
+          ...toolCards[existingIndex],
+          ...toolCard,
+        }
+      } else {
+        toolCards.push({ ...toolCard })
+      }
+
+      activeAssistantMessage.value.toolCards = toolCards
+    }
+
     if (toolCard.kind === 'call') {
       const key = buildToolMessageKey(toolCard)
-      const trackedIndexes = activeToolMessageIndexes.get(key) || []
-      const latestTrackedIndex = trackedIndexes[trackedIndexes.length - 1]
-      const latestTrackedMessage =
-        typeof latestTrackedIndex === 'number' ? messages.value[latestTrackedIndex] : null
-      const latestTrackedToolCard = latestTrackedMessage?.toolCards?.[0]
-
-      if (
-        latestTrackedToolCard &&
-        latestTrackedToolCard.kind === 'call' &&
-        !latestTrackedToolCard.completed
-      ) {
+      const existingMessage = activeToolStatusMessages.get(key)
+      if (existingMessage) {
         continue
       }
 
-      appendToolCardMessage(toolCard)
+      activeToolStatusMessages.set(key, true)
       continue
     }
 
-    const targetIndex = findIncompleteToolMessageIndex(toolCard)
-    if (targetIndex >= 0) {
-      const targetToolCard = messages.value[targetIndex]?.toolCards?.[0]
-      if (targetToolCard) {
-        targetToolCard.completed = true
-        targetToolCard.text = toolCard.text
-      }
-      continue
-    }
-
-    appendToolCardMessage(toolCard)
+    activeToolStatusMessages.set(
+      buildToolMessageKey(toolCard),
+      true,
+    )
   }
+}
+
+function upsertToolStreamCard(event: {
+  toolCallId?: string
+  toolName?: string
+  toolArgs?: Record<string, unknown>
+  toolOutput?: string
+  toolStreamPhase?: string
+}) {
+  if (!activeAssistantMessage.value || !event.toolCallId || !event.toolName) {
+    return
+  }
+
+  const detail = extractToolCardsFromMessage(
+    {
+      content: [
+        {
+          type: 'tool_use',
+          name: event.toolName,
+          arguments: event.toolArgs || {},
+          toolCallId: event.toolCallId,
+        },
+      ],
+    },
+    extractMessageText,
+    isToolResultMessage,
+  )[0]?.detail
+
+  const nextToolCard: ToolCard = {
+    kind: event.toolOutput ? 'result' : 'call',
+    name: event.toolName,
+    args: event.toolArgs,
+    detail,
+    text: event.toolOutput,
+    completed: event.toolStreamPhase === 'result',
+    aborted: event.toolStreamPhase === 'aborted',
+    toolCallId: event.toolCallId,
+  }
+
+  upsertStreamingToolCards([nextToolCard])
 }
 
 async function loadChatHistory() {
@@ -787,12 +881,20 @@ function handleGatewayMessage(event: {
   message?: any
   error?: boolean
   aborted?: boolean
+  delta?: string
+  toolCallId?: string
+  toolName?: string
+  toolArgs?: Record<string, unknown>
+  toolOutput?: string
+  toolStreamPhase?: string
+  role?: string
 }) {
   if (event.sessionKey && event.sessionKey !== currentSessionKey.value) {
     return
   }
 
   if (event.error) {
+    discardThinkingStatusMessage()
     messages.value.push(buildDisplayMessage('assistant', `❌ ${event.text || '发送失败'}`))
     isSending.value = false
     resetActiveStreamingState()
@@ -801,43 +903,66 @@ function handleGatewayMessage(event: {
   }
 
   if (event.aborted) {
+    if (activeAssistantMessage.value) {
+      activeAssistantMessage.value.isStreaming = false
+      activeAssistantMessage.value.thinkingState = 'completed'
+    }
     isSending.value = false
     resetActiveStreamingState()
     return
   }
 
   if (activeRunId.value !== event.runId) {
-    resetActiveStreamingState()
+    activeAssistantMessage.value = null
+    activeRunId.value = null
+    activeToolStatusMessages.clear()
     activeRunId.value = event.runId ?? null
   }
 
   const nextToolCards = event.message
     ? extractToolCardsFromMessage(event.message, extractMessageText, isToolResultMessage)
     : []
-  const nextText = event.text || ''
+  const nextText = event.text || event.delta || ''
 
   if (activeAssistantMessage.value) {
     if (nextText) {
+      activeAssistantMessage.value.thinkingState = 'running'
       updateAssistantMessageText(
         activeAssistantMessage.value,
         mergeStreamingText(activeAssistantMessage.value.text, nextText),
       )
     }
   } else if (nextText || nextToolCards.length > 0) {
-    const nextMessage = buildDisplayMessage('assistant', nextText)
-    messages.value.push(nextMessage)
+    const nextMessage = createStreamingAssistantPlaceholder()
+    nextMessage.thinkingState = 'running'
     if (nextText) {
-      activeAssistantMessage.value = nextMessage
+      updateAssistantMessageText(nextMessage, nextText)
     }
   }
 
+  if (event.state === 'tool_stream') {
+    promoteThinkingMessageToReceived()
+    upsertToolStreamCard(event)
+    scrollMessagesToBottom()
+    return
+  }
+
   if (nextToolCards.length > 0) {
+    promoteThinkingMessageToReceived()
     upsertStreamingToolCards(nextToolCards)
+  }
+
+  if (nextText) {
+    promoteThinkingMessageToReceived()
   }
 
   scrollMessagesToBottom()
 
   if (event.state === 'final') {
+    if (activeAssistantMessage.value) {
+      activeAssistantMessage.value.isStreaming = false
+      activeAssistantMessage.value.thinkingState = 'completed'
+    }
     if (!activeAssistantMessage.value && (nextText || nextToolCards.length > 0)) {
       const finalMessage = buildDisplayMessage('assistant', nextText)
       if (nextText) {
@@ -1492,6 +1617,7 @@ async function sendMessage() {
   }
 
   messages.value.push(buildDisplayMessage('user', content))
+  createStreamingAssistantPlaceholder()
   draftText.value = ''
   scrollMessagesToBottom()
 
@@ -1516,6 +1642,7 @@ async function sendMessage() {
   const client = gatewayClient.value
 
   if (!client || !isConnected) {
+    discardThinkingStatusMessage()
     messages.value.push(
       buildDisplayMessage('assistant', '未连接到 OpenClaw Gateway，请先启动本地 Gateway 服务。'),
     )
@@ -1530,6 +1657,7 @@ async function sendMessage() {
     await client.sendChatMessage(content, {
       sessionKey: currentSessionKey.value,
     })
+    promoteThinkingMessageToReceived()
 
     if (isFirstUserMessage) {
       try {
@@ -1544,6 +1672,7 @@ async function sendMessage() {
     await refreshSessions()
   } catch (error) {
     console.error('[Chat] 发送消息失败:', error)
+    discardThinkingStatusMessage()
     messages.value.push(
       buildDisplayMessage(
         'assistant',
