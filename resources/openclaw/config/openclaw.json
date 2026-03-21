@@ -1,0 +1,70 @@
+{
+  "agents": {
+    "defaults": {
+      "model": {
+        "primary": "qclaw/modelroute"
+      },
+      "workspace": "~/.openclaw/workspace"
+    }
+  },
+  "skills": {
+    "load": {
+      "extraDirs": []
+    }
+  },
+  "models": {
+    "mode": "merge",
+    "providers": {
+      "qclaw": {
+        "baseUrl": "",
+        "apiKey": "",
+        "api": "openai-completions",
+        "models": [
+          {
+            "id": "modelroute",
+            "name": "modelroute"
+          }
+        ]
+      }
+    }
+  },
+  "browser": {
+    "enabled": true,
+    "defaultProfile": "openclaw"
+  },
+  "gateway": {
+    "port": 18789,
+    "mode": "local",
+    "bind": "loopback",
+    "auth": {
+      "mode": "token",
+      "token": "ad264d2126b9ccfcd517f57e316d57beb73e39c24295e54f"
+    },
+    "controlUi": {
+      "allowedOrigins": ["null"]
+    },
+    "tailscale": {
+      "mode": "off",
+      "resetOnExit": false
+    }
+  },
+  "channels": {
+    "wechat-access": {
+      "enabled": false,
+      "token": "",
+      "wsUrl": ""
+    }
+  },
+  "plugins": {
+    "enabled": true,
+    "allow": [],
+    "load": {
+      "paths": []
+    },
+    "entries": {
+      "wechat-access": {
+        "enabled": false
+      }
+    }
+  }
+}

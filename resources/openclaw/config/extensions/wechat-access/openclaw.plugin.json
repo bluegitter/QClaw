@@ -1,0 +1,14 @@
+{
+  "id": "wechat-access",
+  "channels": ["wechat-access"],
+  "configSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "enabled": {
+        "type": "boolean",
+        "description": "是否启用服务号渠道"
+      }
+    }
+  }
+}

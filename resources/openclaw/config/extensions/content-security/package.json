@@ -1,0 +1,15 @@
+{
+  "name": "content-security",
+  "version": "1.0.0",
+  "type": "module",
+  "description": "基于 CreateTask 接口的内容安全审核插件",
+  "author": "adamliu2",
+  "openclaw": {
+    "extensions": [
+      "./index.ts"
+    ]
+  },
+  "peerDependencies": {
+    "openclaw": ">=2026.1.26"
+  }
+}

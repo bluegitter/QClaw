@@ -1,0 +1,43 @@
+{
+  "name": "wechat-access",
+  "version": "1.0.0",
+  "type": "module",
+  "description": "简化的企业微信 服务号 接收消息 Demo",
+  "author": "aa",
+  "openclaw": {
+    "extensions": [
+      "./index.ts"
+    ],
+    "channel": {
+      "id": "wechat-access",
+      "label": "wechat-access",
+      "selectionLabel": "WeCom (plugin)",
+      "detailLabel": "WeCom Bot",
+      "docsPath": "/channels/wechat-access",
+      "docsLabel": "wechat-access",
+      "blurb": "Enterprise WeCom intelligent bot (API mode) via encrypted webhooks + passive replies.",
+      "aliases": [
+        "wechatwork",
+        "wework",
+        "服务号",
+        "企微",
+        "企业微信"
+      ],
+      "order": 85
+    },
+    "install": {
+      "npmSpec": "@yanhaidao/wechat-access",
+      "localPath": "extensions/wechat-access",
+      "defaultChoice": "npm"
+    }
+  },
+  "dependencies": {
+    "fast-xml-parser": "^5.4.1",
+    "undici": "^7.20.0",
+    "ws": "^8.18.0",
+    "zod": "^4.3.6"
+  },
+  "peerDependencies": {
+    "openclaw": ">=2026.1.26"
+  }
+}
