@@ -10,7 +10,7 @@ export function describeToolCall(toolName, toolArgs) {
     return toolArgs.path || toolArgs.file || ""
   }
 
-  if (toolName === "bash" || toolName === "execute" || toolName === "shell") {
+  if (toolName === "bash" || toolName === "execute" || toolName === "shell" || toolName === "exec") {
     const command = toolArgs.command || toolArgs.cmd || ""
     return command.length > 50 ? `${command.slice(0, 50)}...` : command
   }

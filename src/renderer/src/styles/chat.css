@@ -789,9 +789,9 @@ button {
   padding: 6px 10px;
   border-radius: 10px;
   background: #f8f9fa;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  overflow-x: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
 }
 
 .thinking-chain__tool-detail-text {
@@ -800,6 +800,8 @@ button {
   font-size: 12px;
   line-height: 1.45;
   font-family: Monaco, Menlo, monospace;
+  white-space: pre-wrap;
+  word-break: break-word;
 }
 
 .thinking-chain__loading {

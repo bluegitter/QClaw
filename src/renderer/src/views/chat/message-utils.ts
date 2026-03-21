@@ -95,6 +95,15 @@ function getDisplayFileName(pathLike: string) {
   return parts[parts.length - 1] || trimmed
 }
 
+function getCommandLikeValue(toolArgs?: Record<string, any> | null) {
+  if (!toolArgs || typeof toolArgs !== 'object') {
+    return ''
+  }
+
+  const value = toolArgs.command || toolArgs.cmd
+  return typeof value === 'string' ? value.trim() : ''
+}
+
 export function useChatMessageUtils(currentSessionKey: Ref<string>) {
   const markdownCache = new Map<string, string>()
   const activeToolCardResult = ref<ToolCard | null>(null)
@@ -311,7 +320,12 @@ export function useChatMessageUtils(currentSessionKey: Ref<string>) {
       return detail ? `搜索了 ${detail}` : '执行了搜索'
     }
 
-    if (normalizedName === 'bash' || normalizedName === 'execute' || normalizedName === 'shell') {
+    if (
+      normalizedName === 'bash' ||
+      normalizedName === 'execute' ||
+      normalizedName === 'shell' ||
+      normalizedName === 'exec'
+    ) {
       return detail ? `执行了 ${detail}` : '执行了命令'
     }
 
@@ -331,6 +345,7 @@ export function useChatMessageUtils(currentSessionKey: Ref<string>) {
     const normalizedName = String(toolCard.name || '').toLowerCase()
     const detail = toolCard.detail || describeToolCall(toolCard.name, toolCard.args)
     const pathLike = getPathLikeValue(toolCard.args) || detail
+    const commandLike = getCommandLikeValue(toolCard.args)
 
     if (normalizedName === 'read' || normalizedName === 'read_file') {
       return pathLike ? `from ${pathLike}` : ''
@@ -338,6 +353,15 @@ export function useChatMessageUtils(currentSessionKey: Ref<string>) {
 
     if (normalizedName === 'write' || normalizedName === 'write_file' || normalizedName === 'edit') {
       return pathLike ? `to ${pathLike}` : ''
+    }
+
+    if (
+      normalizedName === 'bash' ||
+      normalizedName === 'execute' ||
+      normalizedName === 'shell' ||
+      normalizedName === 'exec'
+    ) {
+      return commandLike || detail || ''
     }
 
     return detail || toolCard.text?.trim() || ''
