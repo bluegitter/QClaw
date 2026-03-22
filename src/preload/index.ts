@@ -81,7 +81,12 @@ const electronAPI: ElectronAPI = {
       providerConfig: Record<string, unknown>,
       primaryModel: string,
     ): Promise<ConfigUpdateResult> =>
-      ipcRenderer.invoke('config:replaceProvider', providerKey, providerConfig, primaryModel)
+      ipcRenderer.invoke('config:replaceProvider', providerKey, providerConfig, primaryModel),
+    removeProvider: (
+      providerKey: string,
+      primaryModel: string,
+    ): Promise<ConfigUpdateResult> =>
+      ipcRenderer.invoke('config:removeProvider', providerKey, primaryModel)
   },
 
   // 应用级 API

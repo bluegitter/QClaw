@@ -17,6 +17,7 @@ import {
   OPENCLAW_STATE_DIR,
   OPENCLAW_CONFIG_PATH,
   OPENCLAW_DEFAULT_GATEWAY_PORT,
+  OPENCLAW_EXTERNAL_STATE_DIR_NAME,
   OPENCLAW_STARTUP_TIMEOUT,
   OPENCLAW_SHUTDOWN_TIMEOUT,
   OPENCLAW_HEALTH_WAIT_RETRIES,
@@ -42,6 +43,26 @@ import {
 
 interface ServiceOptions {
   verbose?: boolean
+}
+
+interface AuthProfileRecord {
+  type: 'api_key' | 'oauth' | 'token'
+  provider: string
+  key?: string
+  access?: string
+  refresh?: string
+  expires?: number
+  accountId?: string
+  email?: string
+  token?: string
+}
+
+interface AuthProfileStore {
+  version: number
+  profiles: Record<string, AuthProfileRecord>
+  lastGood?: Record<string, string>
+  usageStats?: Record<string, unknown>
+  order?: Record<string, string[]>
 }
 
 export interface ServiceConfig {
@@ -315,10 +336,279 @@ export class OpenClawService extends EventEmitter {
     this.patchConfigFromTemplate(configPath)
     this.injectEnvUrls(configPath)
     this.ensureExternalExtraDirs(configPath)
+    this.ensureMainAgentAuthProfiles(configPath, stateDir)
+    this.stripStaleCodexProviderFromAgentModelsCache(stateDir)
 
     // 从配置文件读取端口，作为唯一的端口来源
     const port = readConfigField<number>(configPath, 'gateway.port')
     this.currentPort = port ?? this.serviceConfig.gatewayPort
+  }
+
+  /**
+   * 为主 agent 生成/迁移 auth-profiles.json。
+   *
+   * OpenClaw 新版本优先从 agents/<id>/agent/auth-profiles.json 读取认证信息。
+   * QClaw 的旧状态目录里通常只有:
+   * - 顶层 openclaw.json 中的 provider 配置
+   * - agents/main/agent/auth.json（旧格式，甚至可能为空）
+   *
+   * 这里在每次启动前执行一次兼容同步，优先级如下:
+   * 1. 复用现有 ~/.qclaw/agents/main/agent/auth-profiles.json
+   * 2. 缺失时继承 ~/.openclaw/agents/main/agent/auth-profiles.json
+   * 3. 结合 ~/.codex/auth.json 与当前 openclaw.json providers 覆盖/补齐内置 provider 凭证
+   */
+  private ensureMainAgentAuthProfiles(configPath: string, stateDir: string): void {
+    try {
+      const config = readConfigFileSync<Record<string, unknown>>(configPath)
+      const agentDir = path.join(stateDir, 'agents', 'main', 'agent')
+      const targetPath = path.join(agentDir, 'auth-profiles.json')
+      const sourcePath = path.join(
+        os.homedir(),
+        OPENCLAW_EXTERNAL_STATE_DIR_NAME,
+        'agents',
+        'main',
+        'agent',
+        'auth-profiles.json',
+      )
+
+      const store =
+        this.readAuthProfileStore(targetPath) ??
+        this.readAuthProfileStore(sourcePath) ?? {
+          version: 1,
+          profiles: {},
+        }
+
+      const mutatedFromCodex = this.upsertCodexAuthProfile(store, config)
+      const mutatedFromProviders = this.upsertProviderApiKeyProfiles(store, config)
+      const hadExistingFile = fs.existsSync(targetPath)
+
+      if (!hadExistingFile && Object.keys(store.profiles).length === 0) {
+        return
+      }
+
+      if (!hadExistingFile || mutatedFromCodex || mutatedFromProviders) {
+        fs.mkdirSync(agentDir, { recursive: true, mode: 0o700 })
+        fs.writeFileSync(`${targetPath}.tmp`, `${JSON.stringify(store, null, 2)}\n`, {
+          mode: 0o600,
+        })
+        fs.renameSync(`${targetPath}.tmp`, targetPath)
+        this.emit(
+          'log',
+          this.createLogEntry(
+            'info',
+            `Ensured main agent auth profiles at ${targetPath}`,
+          ),
+        )
+      }
+    } catch (error) {
+      this.emit(
+        'log',
+        this.createLogEntry(
+          'warn',
+          `Failed to ensure main agent auth profiles: ${error instanceof Error ? error.message : 'Unknown error'}`,
+        ),
+      )
+    }
+  }
+
+  private readAuthProfileStore(filePath: string): AuthProfileStore | null {
+    if (!fs.existsSync(filePath)) {
+      return null
+    }
+
+    try {
+      const raw = JSON.parse(fs.readFileSync(filePath, 'utf8')) as Record<string, unknown>
+      const profilesRaw =
+        raw.profiles && typeof raw.profiles === 'object'
+          ? (raw.profiles as Record<string, unknown>)
+          : null
+
+      if (!profilesRaw) {
+        return null
+      }
+
+      const profiles: Record<string, AuthProfileRecord> = {}
+
+      for (const [profileId, value] of Object.entries(profilesRaw)) {
+        if (!value || typeof value !== 'object') {
+          continue
+        }
+
+        const record = value as Record<string, unknown>
+        const type = record.type
+        const provider = record.provider
+
+        if (
+          (type !== 'api_key' && type !== 'oauth' && type !== 'token') ||
+          typeof provider !== 'string' ||
+          !provider.trim()
+        ) {
+          continue
+        }
+
+        profiles[profileId] = {
+          type,
+          provider,
+          ...(typeof record.key === 'string' ? { key: record.key } : {}),
+          ...(typeof record.access === 'string' ? { access: record.access } : {}),
+          ...(typeof record.refresh === 'string' ? { refresh: record.refresh } : {}),
+          ...(typeof record.expires === 'number' ? { expires: record.expires } : {}),
+          ...(typeof record.accountId === 'string' ? { accountId: record.accountId } : {}),
+          ...(typeof record.email === 'string' ? { email: record.email } : {}),
+          ...(typeof record.token === 'string' ? { token: record.token } : {}),
+        }
+      }
+
+      return {
+        version: typeof raw.version === 'number' ? raw.version : 1,
+        profiles,
+        ...(raw.lastGood && typeof raw.lastGood === 'object'
+          ? { lastGood: raw.lastGood as Record<string, string> }
+          : {}),
+        ...(raw.usageStats && typeof raw.usageStats === 'object'
+          ? { usageStats: raw.usageStats as Record<string, unknown> }
+          : {}),
+        ...(raw.order && typeof raw.order === 'object'
+          ? { order: raw.order as Record<string, string[]> }
+          : {}),
+      }
+    } catch {
+      return null
+    }
+  }
+
+  private upsertCodexAuthProfile(store: AuthProfileStore, config: Record<string, unknown>): boolean {
+    const codexAuthPath = path.join(os.homedir(), '.codex', 'auth.json')
+    if (!fs.existsSync(codexAuthPath)) {
+      return false
+    }
+
+    try {
+      const payload = JSON.parse(fs.readFileSync(codexAuthPath, 'utf8')) as Record<string, unknown>
+      const tokens =
+        payload.tokens && typeof payload.tokens === 'object'
+          ? (payload.tokens as Record<string, unknown>)
+          : null
+      const access = tokens && typeof tokens.access_token === 'string' ? tokens.access_token.trim() : ''
+      const refresh = tokens && typeof tokens.refresh_token === 'string' ? tokens.refresh_token.trim() : ''
+
+      if (!access) {
+        return false
+      }
+
+      const profileId = 'openai-codex:default'
+      const nextProfile: AuthProfileRecord = {
+        type: 'oauth',
+        provider: 'openai-codex',
+        access,
+        ...(refresh ? { refresh } : {}),
+      }
+
+      if (typeof tokens.id_token === 'string' && !nextProfile.email) {
+        // id_token is currently not required by OpenClaw auth store; ignore for now.
+      }
+
+      const claims = this.parseJwtPayload(access)
+      if (claims) {
+        const exp = claims.exp
+        if (typeof exp === 'number') {
+          nextProfile.expires = exp * 1000
+        }
+        if (typeof claims.email === 'string' && claims.email) {
+          nextProfile.email = claims.email
+        }
+        const authInfo =
+          claims['https://api.openai.com/auth'] &&
+          typeof claims['https://api.openai.com/auth'] === 'object'
+            ? (claims['https://api.openai.com/auth'] as Record<string, unknown>)
+            : null
+        const accountId =
+          typeof authInfo?.chatgpt_account_id === 'string'
+            ? authInfo.chatgpt_account_id
+            : typeof authInfo?.account_id === 'string'
+              ? authInfo.account_id
+              : ''
+        if (accountId) {
+          nextProfile.accountId = accountId
+        }
+      }
+
+      const prevProfile = store.profiles[profileId]
+      const changed = JSON.stringify(prevProfile ?? null) !== JSON.stringify(nextProfile)
+      if (changed) {
+        store.profiles[profileId] = nextProfile
+      }
+
+      store.lastGood = {
+        ...(store.lastGood ?? {}),
+        'openai-codex': profileId,
+      }
+
+      return changed
+    } catch {
+      return false
+    }
+  }
+
+  private upsertProviderApiKeyProfiles(store: AuthProfileStore, config: Record<string, unknown>): boolean {
+    const providers = this.getConfigProviders(config)
+    let changed = false
+
+    for (const [providerKey, providerValue] of Object.entries(providers)) {
+      if (!providerValue || typeof providerValue !== 'object') {
+        continue
+      }
+
+      const providerConfig = providerValue as Record<string, unknown>
+      const apiKey = typeof providerConfig.apiKey === 'string' ? providerConfig.apiKey.trim() : ''
+
+      if (!apiKey || providerKey === 'qclaw' || providerKey === 'openai-codex') {
+        continue
+      }
+
+      const profileId = `${providerKey}:default`
+      const nextProfile: AuthProfileRecord = {
+        type: 'api_key',
+        provider: providerKey,
+        key: apiKey,
+      }
+
+      if (JSON.stringify(store.profiles[profileId] ?? null) !== JSON.stringify(nextProfile)) {
+        store.profiles[profileId] = nextProfile
+        changed = true
+      }
+    }
+
+    return changed
+  }
+
+  private getConfigProviders(config: Record<string, unknown>): Record<string, Record<string, unknown>> {
+    const models =
+      config.models && typeof config.models === 'object'
+        ? (config.models as Record<string, unknown>)
+        : null
+    const providers =
+      models?.providers && typeof models.providers === 'object'
+        ? (models.providers as Record<string, Record<string, unknown>>)
+        : {}
+
+    return providers
+  }
+
+  private parseJwtPayload(token: string): Record<string, unknown> | null {
+    const parts = token.split('.')
+    if (parts.length < 2) {
+      return null
+    }
+
+    try {
+      const normalized = parts[1].replace(/-/g, '+').replace(/_/g, '/')
+      const padding = normalized.length % 4 === 0 ? '' : '='.repeat(4 - (normalized.length % 4))
+      const decoded = Buffer.from(`${normalized}${padding}`, 'base64').toString('utf8')
+      return JSON.parse(decoded) as Record<string, unknown>
+    } catch {
+      return null
+    }
   }
 
   /**
@@ -409,6 +699,9 @@ export class OpenClawService extends EventEmitter {
       // 清理插件 config 中模板已移除的旧字段（additionalProperties: false 会导致校验失败）
       const pluginConfigStripped = stripExtraPluginConfigKeys(userConfig, templateConfig)
 
+      // 存量迁移: 移除显式 openai-codex provider，避免覆盖内建 Codex provider
+      const removedExplicitCodexProvider = this.removeExplicitCodexProvider(userConfig)
+
       // 兼容旧模板中 `${QCLAW_LLM_API_KEY}` 这类 env var 占位。
       // Electron 独立模式不依赖外部 shell 注入该变量，保留占位会导致 OpenClaw 启动前校验失败。
       const strippedLegacyEnvPlaceholder = this.stripLegacyEnvPlaceholder(userConfig)
@@ -419,6 +712,7 @@ export class OpenClawService extends EventEmitter {
         legacyMigrated ||
         templateMerged ||
         pluginConfigStripped ||
+        removedExplicitCodexProvider ||
         strippedLegacyEnvPlaceholder ||
         strippedLegacySkillSelection ||
         migratedLegacyPluginEntries
@@ -427,7 +721,7 @@ export class OpenClawService extends EventEmitter {
         this.emit(
           'log',
           this.createLogEntry('info',
-            `Patched config from template (legacyMigrated=${String(legacyMigrated)}, templateMerged=${String(templateMerged)}, strippedLegacyEnvPlaceholder=${String(strippedLegacyEnvPlaceholder)}, strippedLegacySkillSelection=${String(strippedLegacySkillSelection)}, migratedLegacyPluginEntries=${String(migratedLegacyPluginEntries)})`)
+            `Patched config from template (legacyMigrated=${String(legacyMigrated)}, templateMerged=${String(templateMerged)}, removedExplicitCodexProvider=${String(removedExplicitCodexProvider)}, strippedLegacyEnvPlaceholder=${String(strippedLegacyEnvPlaceholder)}, strippedLegacySkillSelection=${String(strippedLegacySkillSelection)}, migratedLegacyPluginEntries=${String(migratedLegacyPluginEntries)})`)
         )
       }
     } catch (err) {
@@ -522,6 +816,74 @@ export class OpenClawService extends EventEmitter {
 
     delete (skills as Record<string, unknown>).selection
     return true
+  }
+
+  /**
+   * 移除显式写入到 openclaw.json 的 openai-codex provider。
+   *
+   * openai-codex 在底层模型注册表里本身就是内建 provider，并带有专用
+   * `openai-codex-responses` 实现。QClaw 如果把它写成自定义 provider，会被
+   * 当前 OpenClaw 配置 schema/Clawdbot models.json 归一化过程覆盖成
+   * `openai-responses + https://chatgpt.com/backend-api`，最终请求命中错误接口并返回 403 HTML。
+   */
+  private removeExplicitCodexProvider(config: Record<string, unknown>): boolean {
+    const providers = this.getConfigProviders(config)
+    if (!('openai-codex' in providers)) {
+      return false
+    }
+
+    delete providers['openai-codex']
+    return true
+  }
+
+  /**
+   * 清理主 agent 的 models.json 中历史残留的错误 Codex provider。
+   *
+   * 旧版本 QClaw 会把 openai-codex 写成显式自定义 provider，随后被 Clawdbot
+   * 归一化成 `openai-responses + https://chatgpt.com/backend-api` 并缓存到 models.json。
+   * 即使之后 openclaw.json 已经删除了该 provider，merge 模式仍会把旧缓存保留下来，
+   * 导致运行时继续命中错误接口返回 403 HTML。
+   *
+   * 这里仅移除“明显错误”的 stale 条目，不触碰其他 provider 缓存。
+   */
+  private stripStaleCodexProviderFromAgentModelsCache(stateDir: string): void {
+    try {
+      const modelsPath = path.join(stateDir, 'agents', 'main', 'agent', 'models.json')
+      if (!fs.existsSync(modelsPath)) {
+        return
+      }
+
+      const content = readConfigFileSync<Record<string, unknown>>(modelsPath)
+      const providers = content.providers
+      if (!providers || typeof providers !== 'object' || Array.isArray(providers)) {
+        return
+      }
+
+      const codexProvider = (providers as Record<string, unknown>)['openai-codex']
+      if (!codexProvider || typeof codexProvider !== 'object' || Array.isArray(codexProvider)) {
+        return
+      }
+
+      const staleApi = (codexProvider as Record<string, unknown>).api
+      if (staleApi !== 'openai-responses') {
+        return
+      }
+
+      delete (providers as Record<string, unknown>)['openai-codex']
+      writeConfigFileSync(modelsPath, content)
+      this.emit(
+        'log',
+        this.createLogEntry('info', `Removed stale openai-codex provider from ${modelsPath}`),
+      )
+    } catch (err) {
+      this.emit(
+        'log',
+        this.createLogEntry(
+          'warn',
+          `Failed to clean stale codex models cache: ${err instanceof Error ? err.message : 'Unknown error'}`,
+        ),
+      )
+    }
   }
 
   /**

@@ -743,6 +743,64 @@ export function setupIpcHandlers(): void {
     }
   })
 
+  ipcMain.handle('config:removeProvider', async (
+    _event: IpcMainInvokeEvent,
+    providerKey: string,
+    primaryModel: string
+  ): Promise<ConfigUpdateResult> => {
+    try {
+      const configPath = getConfigPath()
+      const currentConfig = readConfigFileSync<Record<string, unknown>>(configPath)
+
+      const models =
+        currentConfig.models && typeof currentConfig.models === 'object'
+          ? currentConfig.models as Record<string, unknown>
+          : ((currentConfig.models = {}), currentConfig.models as Record<string, unknown>)
+
+      const providers =
+        models.providers && typeof models.providers === 'object'
+          ? models.providers as Record<string, unknown>
+          : ((models.providers = {}), models.providers as Record<string, unknown>)
+
+      delete providers[providerKey]
+
+      const agents =
+        currentConfig.agents && typeof currentConfig.agents === 'object'
+          ? currentConfig.agents as Record<string, unknown>
+          : ((currentConfig.agents = {}), currentConfig.agents as Record<string, unknown>)
+
+      const defaults =
+        agents.defaults && typeof agents.defaults === 'object'
+          ? agents.defaults as Record<string, unknown>
+          : ((agents.defaults = {}), agents.defaults as Record<string, unknown>)
+
+      const model =
+        defaults.model && typeof defaults.model === 'object'
+          ? defaults.model as Record<string, unknown>
+          : ((defaults.model = {}), defaults.model as Record<string, unknown>)
+
+      model.primary = primaryModel
+
+      await writeConfigFile(configPath, currentConfig)
+
+      return {
+        success: true,
+        config: currentConfig as OpenClawConfig,
+        message: '配置已更新',
+        serviceRestarted: false,
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : '配置更新失败'
+      return {
+        success: false,
+        config: {} as OpenClawConfig,
+        message: `配置更新失败: ${message}`,
+        serviceRestarted: false,
+        error: message,
+      }
+    }
+  })
+
   // ==================== 应用级 API ====================
 
   ipcMain.handle('app:get-machine-id', async (): Promise<string> => {

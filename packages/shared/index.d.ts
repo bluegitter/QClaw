@@ -191,6 +191,7 @@ export interface ElectronAPI {
     getField(keyPath: string): Promise<unknown>
     updateField(partialConfig: Partial<OpenClawConfig>): Promise<ConfigUpdateResult>
     replaceProvider(providerKey: string, providerConfig: Record<string, unknown>, primaryModel: string): Promise<ConfigUpdateResult>
+    removeProvider(providerKey: string, primaryModel: string): Promise<ConfigUpdateResult>
   }
   app: {
     getMachineId(): Promise<string>

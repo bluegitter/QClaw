@@ -325,13 +325,27 @@ async function persistModelSelection({
   }
 
   if (modelType === "custom" && modelId) {
+    if (provider === CODEX_PROVIDER_KEY) {
+      const result = await electronAPI?.config.removeProvider(
+        provider,
+        `${provider}/${modelId}`,
+      )
+
+      if (result && !result.success) {
+        showError(result.message || "配置更新失败")
+        return false
+      }
+
+      return true
+    }
+
     const providerPayload = {
       baseUrl,
       apiKey:
         authMode === MODEL_AUTH_MODE_OPENAI_CODEX_OAUTH
           ? oauthAccessToken || apiKey
           : apiKey,
-      api: provider === CODEX_PROVIDER_KEY ? "openai-codex-responses" : "openai-completions",
+      api: provider === CODEX_PROVIDER_KEY ? "openai-responses" : "openai-completions",
       models: [{ id: modelId, name: modelId }],
     }
 

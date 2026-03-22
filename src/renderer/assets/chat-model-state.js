@@ -2,6 +2,9 @@ import {
   CHAT_MODEL_PROVIDER_KEYS,
   SYSTEM_CONFIG_PROVIDER_KEY,
   MODEL_AUTH_MODE_API_KEY,
+  CODEX_PROVIDER_KEY,
+  CHAT_MODEL_PROVIDER_OPTIONS,
+  MODEL_AUTH_MODE_OPENAI_CODEX_OAUTH,
   getProviderAuthMode,
   getProviderCredential,
 } from "./chat-model-config.js"
@@ -29,11 +32,19 @@ export async function loadChatModelState({
 
     if (providerKey !== "" && providerKeys.includes(providerKey)) {
       const providerConfig = providers?.[providerKey]
+      const providerBaseUrl =
+        providerConfig?.baseUrl ||
+        CHAT_MODEL_PROVIDER_OPTIONS.find((option) => option.key === providerKey)?.baseUrl ||
+        cachedModelSetting?.baseUrl ||
+        ""
       nextModelConfig = {
         modelType: "custom",
         provider: providerKey,
-        authMode: getProviderAuthMode(providerKey, providerConfig),
-        baseUrl: providerConfig?.baseUrl || cachedModelSetting?.baseUrl || "",
+        authMode:
+          providerKey === CODEX_PROVIDER_KEY
+            ? MODEL_AUTH_MODE_OPENAI_CODEX_OAUTH
+            : getProviderAuthMode(providerKey, providerConfig),
+        baseUrl: providerBaseUrl,
         apiKey:
           getProviderCredential(providerKey, providerConfig) ||
           cachedModelSetting?.apiKey ||

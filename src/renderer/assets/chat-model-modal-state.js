@@ -1,6 +1,9 @@
 import {
   SYSTEM_CONFIG_PROVIDER_KEY,
   MODEL_AUTH_MODE_API_KEY,
+  CODEX_PROVIDER_KEY,
+  CHAT_MODEL_PROVIDER_OPTIONS,
+  MODEL_AUTH_MODE_OPENAI_CODEX_OAUTH,
   getProviderAuthMode,
   getProviderCredential,
 } from "./chat-model-config.js"
@@ -59,9 +62,17 @@ export async function initializeModelSettingModalState({
 
   if (hasKnownPrimaryProvider) {
     const providerConfig = providers?.[primaryProvider]
+    const providerBaseUrl =
+      providerConfig?.baseUrl ||
+      CHAT_MODEL_PROVIDER_OPTIONS.find((option) => option.key === primaryProvider)?.baseUrl ||
+      cachedModelSetting?.baseUrl ||
+      ""
     nextState.modelType = "custom"
     nextState.provider = primaryProvider
-    nextState.authMode = getProviderAuthMode(primaryProvider, providerConfig)
+    nextState.authMode =
+      primaryProvider === CODEX_PROVIDER_KEY
+        ? MODEL_AUTH_MODE_OPENAI_CODEX_OAUTH
+        : getProviderAuthMode(primaryProvider, providerConfig)
     nextState.apiKey = getProviderCredential(primaryProvider, providerConfig)
     nextState.oauthAccessToken = providerConfig?.oauthAccessToken || ""
     nextState.oauthRefreshToken = providerConfig?.oauthRefreshToken || ""
@@ -69,7 +80,7 @@ export async function initializeModelSettingModalState({
     nextState.oauthAccountId = providerConfig?.oauthAccountId || ""
     nextState.oauthEmail = providerConfig?.oauthEmail || ""
     nextState.oauthExpiresAt = providerConfig?.oauthExpiresAt || ""
-    nextState.baseUrl = providerConfig?.baseUrl || ""
+    nextState.baseUrl = providerBaseUrl
 
     if (primaryProvider === "other") {
       nextState.customModelName =
