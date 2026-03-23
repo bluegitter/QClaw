@@ -289,24 +289,26 @@ export function useSkillSettingsPanel() {
 
       const normalizedIds = normalizeSkillEnabledIds(enabledIds)
       const normalizedExternalDirs = normalizeExternalSkillDirs(extraDirs as string[] | undefined)
-      const inspectedExternalSkills = await Promise.all(
-        normalizedExternalDirs.map(async (dirPath) => {
-          const result = await window.electronAPI?.app.inspectSkillDirectory(dirPath)
-          if (!result?.isValid) {
-            return null
-          }
+      const inspectedExternalSkills = typeof window.electronAPI?.app.listSkillsFromRoots === 'function'
+        ? await window.electronAPI.app.listSkillsFromRoots(normalizedExternalDirs)
+        : await Promise.all(
+          normalizedExternalDirs.map(async (dirPath) => {
+            const result = await window.electronAPI?.app.inspectSkillDirectory(dirPath)
+            if (!result?.isValid) {
+              return null
+            }
 
-          return toSkillOption(result)
-        }),
-      )
+            return toSkillOption(result)
+          }),
+        )
 
       skillEnabledIdsSaved.value = [...normalizedIds]
       skillEnabledIdsDraft.value = [...normalizedIds]
       externalSkillDirsSaved.value = [...normalizedExternalDirs]
       externalSkillDirsDraft.value = [...normalizedExternalDirs]
-      externalSkillItems.value = inspectedExternalSkills.filter(
-        (item): item is SkillSettingsOption => Boolean(item),
-      )
+      externalSkillItems.value = inspectedExternalSkills
+        .filter((item): item is SkillSettingsOption => Boolean(item))
+        .map((item) => toSkillOption(item))
     } catch (error) {
       console.error('[Chat] 读取技能设置失败:', error)
       const normalizedIds = normalizeSkillEnabledIds()

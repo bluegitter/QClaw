@@ -1,0 +1,105 @@
+/**
+ * Risk label translations for AI content moderation.
+ *
+ * 标签映射表经 XOR 混淆 + Base64 编码存储，避免 bundle.js 中出现明文标签。
+ * 如需更新映射表，修改 labels-data.json 后运行: node src/_gen.mjs
+ */
+
+const K = "QmPcMgr@AiSec#2025!";
+
+// XOR-obfuscated + Base64-encoded JSON of LabelToTranslationMap
+// prettier-ignore
+const D =
+  "Kk9hU3xXQ3BxWHFfGAFIWBAPA7nC4Yrn8DMJpsPSgsOX2pe20KnIT3xBKAlQemM9IQwASBJxexVVPk0SESgGGWATHD8AEAEeElFU" +
+  "VTQKPxE0RUg7YxM7R1kB1Yun3Z7WLBmG4+6XxemAyvWGq4QSHhdEP09qQQ8eAiEyGnMkKgNhUVRQVShNAgY+EwApIh06Cg1QEE1P" +
+  "GQNgXWFTfFdCcmNTKEcZSxAKENKO8IvE2gwuldrFjejehqmT16mbx/Hqck9vAhxie0sbDAlCUVsSdGhxOTEQJkc9IisMMBEKVVcS" +
+  "HhdCMBk1BCIVC2J7EnEfCwEIEtWOtLnS1yIEgtzJpOz7jPqz17iEFw1zCD5Bd0UwOTEIIBZDYnsQYVRHNBkpQx8CATQzADARCkxc" +
+  "QxBIXH1PYVN8V0NwcVpxXxgBSFgQDwO10fqL7uKUwfeP1+qFr7XUiZEDfU81DW9dUAQoGjQQClBXVBJ4QD0EMwoiEgFgCAcgERFW" +
+  "UURbWk8iT3xBLgYGJSYGIRxBGUkSSF0Da0+32NiPzccAILbL6sa3mNussbTl5kFhRRcuY1NxJxpTU0NBFWAYTQMCKwIGOWE7NhYX" +
+  "UVtTRlxOPx5yHjBLUHFxWGNUUxMGEghOAysFcllvgtfXpObFJCrGtLXbtom46N2E8MlQbGMMPUdZAXdIRkdAMhlwIgRHOy41DCEL" +
+  "Ak8Sc11bRzgKJREsExsvL0t/RwBCRlVVWlMoT2oYbx0aYntLtN72y423c3zE/+S15uWO69Ck4eVHTwFXXhAPAxMUIAI+FFIBCEkA" +
+  "BAVGRkkSZ0QiGSIKLhMbLy8acRgeDxABAgQRYF1gVm9dCWI7AXFfQcaumNSjprfM84f1ypTkzIzWwIW3idW1jsfd6rTY6UVeYiQH" +
+  "cV9BalxaV1ZVcSwkFywEGWAIByAREVZRRFtaTyJNOQ1tIx0jNAQ2CxdQEBwQVkAlCDcMPx5QejpLKQ1BGRDXiaDJ7uoRKqjJ+6XE" +
+  "wbr888a6hhAZAzQDcllvJQswIBogRSJqEmNTU0QlFHAxKBQGMigKJwwMTUEST0gNc1xgUn1VQnBwS2keQVlaEggXyf7ctczxgObf" +
+  "p+HDg/+q156B0KfUiP7ab0tQJS9LaUcqTVZFUVABGQwiDisSHmACBj0RBk1GEHVQTzQfMRckCBxibUswBBdGVV9ATANrFnIZJUVI" +
+  "Yqf12oDNkNe2t9CP6IrE/Kvv4mJtSzYLQRkQeFNHTDcYPEMOCBw0JAcnRSRGXFVAVFU4Aj5BMBpeYnBZYlVREwICEA9acxc4QXdF" +
+  "mvXNjN7/TMuduNuftn6L//Go9PNibUs2C0EZEHdTWEM9BD4EYiEAITQNfCERVlVDEBkDMgwkBioIADljUyhHGUsQChDTvdiI/tCo" +
+  "4rel79C08fzFuqAQGQM0A3JZby8TMiwPJglDYF1eRlBPJU0XBiMCACE1ADwLQV5PHBAEEWBdYlN9VFB6OkspDUEZENiCnMj777Tb" +
+  "w4Hf56nO1UdPAVdeEA8DEA8lEChHEy4lSRcMEEBAWV9cTzAZOQwjRV5iIggnAARMQEkQD1pzFzhBd0WU3MiM/daGpbfVnIzGxfK2" +
+  "661FXmIkB3FfQWtTQl9TVD1NEwwjExcuNUkUAA1GQFFGXE4/Ty0eYUVDcHBZYFVTEhAKSRdbOU9qQarN8aXO/7TrzMaQs9e6ubjq" +
+  "30yoyPSp08xxSUFGXBIIF3IlCDEPbSIcNigbPAsORlxEEmNAIwQxASECAW8KDCoWQQ8QU1NBRDYCIhpvXQliOwFxX0HHjZHUtI62" +
+  "x9OGwvFQbGMMPUdZAXteVFpTPAwkCiIJUhQpDDURQV5PHBAEEWBdY1N9VVB6OkspDUEZENeYtsTe+7b2woH236f/1IHYlRAcEFBP" +
+  "c1dyMDkCEyxhOjYLEEpGWURQARcEPAY+RV5iIggnAARMQEkQD1pzFzhBd0WW/+CP0sqEibHVvaMDfU81DW9dUAkvDzwXDkJGWV1b" +
+  "AQUFNQU5RQ89bUtiVVITAQACBgNrFnIZJUVIYqbD0IDstdSFvd2G2YjJy6vywqbMx3FJQUZcEggXciUIMQ9tJQAvNho2F0NnU0RT" +
+  "Fw1zDjEXKAAdMjhLaR5BWVoSCBfF7sy24uKA2MOk5sVHTwFXXhAPAxgDNgw/ChM0KAY9RTdLV1ZGF1wsQXJSfVZCc3FZZ0dZWBBK" +
+  "Whcbc4r64Kjo5KXGxLvK4sWkt9aOl3NBcgYjRUhiEh02BA8DcUJXUUQ/GTkCIUc0KS0MIEdPAVFRRlBGPh8pQXccUDopS2lHh5yT" +
+  "1rOaxvvutezbRV5iJAdxX0FqXFZdR0wwGTkMI0cmKCQPJ0ceXh4SAwUQYV5gU3hFSDtjEztHWQHbravcmsmJ78Kr5t2m1d+6/uUB" +
+  "HhJXWwNrTwMKIQIcNGEgPQMMUV9RRlxOP00TDCELFyM1ADwLQQ8QU1NBRDYCIhpvXQliOwFxX0HHjZHUtI62x9OGwvFQbGMMPUdZ" +
+  "AXteVFpTPAwkCiIJUhQpDDURQV5PHBAEEWBdZFN9VlB6OkspDUEZENmopcb27Lb2/YH/7qTNxYPQpxAcEFBPc1dyMz8OBCEiEHMh" +
+  "AldTEH5QQDoMNwZvS1AjIB02AgxRSxIITgMrBXJZb47o0KbO0oPQp9usgBcNcwg+QXdFIjIoHzIGGgNwQldUQjlPLR5hRUNwcFln" +
+  "VVMREApJF1s5T2pBpcjJpc7/uv/zxJWx1KOmtdbmQWFFFy5jU3E3BkJWEGJHSCcMJAZtIRssJBpxSUFAU0RXUk4jFHJZNkUIKGNT" +
+  "cYz5s9WXs9OS1YTM0W9LUCUvS2lHM1FbRlNWWHEvIgYsBBpiPBR/R1ITAwAGBRFiT2oYbx0aYntLtfbux4+s1KSltO7fhunTXan7" +
+  "z7bg6MqRvhAZAzQDcllvJhEjJBogRSBCX1VAVA4cBDMRIhcaLy8McUlBQFNEV1JOIxRyWTZFCChjU3GM+bPVl7PTktWEzNFvS1Al" +
+  "L0tpRzNRW0ZTVlhxLyIGLAQaYjwUf0dSEwMABgURZU9qGG8dGmJ7S7rxzcSpqNqbkbTQxUFhRRcuY1NxLgZaXl9VUkg/CnJPbwQT" +
+  "NCQOPBcaAQhLEE9Jc1dyitf3lefAj+Dhir+AEh4XRD9PakEdFRs2IAoqRSFRV1FRXQMsEHxBfFdDcHRZY1RBGUkSSF0Da0+028aP" +
+  "z/2k0OWD6oTakb7ToOeL1Oyqz/ml++ZxSUFGXBIIF2U+Gj4PIgYWYCAHN0UmW1dTR0FEcSAxDzoGACVjRXEGAldXV11HWHNXK0E3" +
+  "D1B6Y43r7ouej9auncj4wbf0yIHd0mNFcQANAQgSf1RNJgwiBm0jHTcvBTwEBwFPTR4XEGFcYFZ9V0BiexJxHwsBCBLbsqu3+e6F" +
+  "zNGUxM6PxeKHmIQSHhdEP09qQQkVHTBhJDIJCkBbX0dGARcEPAY+RV5iIggnAARMQEkQD1pzFzhBd0WW+MqB7tiFv5rZm5nGxui2" +
+  "zN9FXmIkB3FfQW5TXEVUUzRNFAw6CR4vIA1xGB4PEAECBBFkXWBQb10JYjsBcV9Bx46a2pakt8DzhvXfmv3ujejTQQ8QVVwXG3Mp" +
+  "ORAqEhszJA1zBBADflVVXFU4ADEXKEchLycdJAQRRhAcEFZAJQg3DD8eUHo6SykNQRkQ1Iq+yezQtv/ljtvspv7Wg8yxEBwQUE9z" +
+  "V3IuLAsFITMMcyEMVFxcXVRFcxAtT29WQnFxXGNVVwEISxBPSXNXcovy+ZTO5I/S04WnvdSKvsns0LbZ3UVeYiQHcV9BYF1eXFBC" +
+  "JU0kDG0qEywoCjoKFlASdF1CTz0CMQdtNB01Mwo2R08BUVFGUEY+HylBdxxQOilLaUeHm7nYj4jHzcW5yuGA5cWnxsFHTwFXXhAP" +
+  "AxwMPBQsFRdgBQYkCw9MU1QQSFx9T2FTfFdEcHFYcV8YAUhYEA8DudLMhOXslvvijvPkhaqV2JO5A31PNQ1vXVASJAQ8EQYDcV9W" +
+  "UAEUFTUAOBMbLy9Lf0cAQkZVVVpTKE9qGG8dGmJ7S7Xk1cW2v9WIsLbWzIvs65b4+0t/RwZNEAoQeEA9BDMKIhIBYA8MJxIMUVkQ" +
+  "c1ZVOBs5FzRFDz1tS2JVUhMEAAIHA2sWchklRUhiqcfsjPSN1LGE06Xeiu3yqPryYm1LNgtBGRBxUVZEIh5wLiwLGyMoBiYWQ3Zg" +
+  "fEEXDXMOMRcoAB0yOEtpHkFZWhIIF8fQ27bnwoDP0abSz43Cr9aIiBcNcwg+QXdFPyEtADAMDFZBEHxQVSYCIghtJhE0KB86ERoB" +
+  "T00eFxBhXGBUfVdDYnsScR8LAQgS1oqPt/nphP7clfvej/Pdhpyx1qSyxerbck9vAhxie0seCgdKVEkSZlgiGTUObSQdMiRJFQwP" +
+  "RkESHhdCMBk1BCIVC2J7EnEfCwEIEtWGmrbWz4Tt05fdzkt/RwZNEAoQZlgiGTUObSMTLSAONkceXh4SAwUQYVpgU39FSDtjEztH" +
+  "WQHWj5zTteiL48uo4f6o4MFxSUFGXBIIF2w+CTkFNEcgJSYAIBERWhAcEFZAJQg3DD8eUHo6SykNQRkQ14GOxuryt8P5gu/PY0Vx" +
+  "AA0BCBJhTFIlCD1DCQYfISYMcRgeDxABAgQRaV1gUm9dCWI7AXFfQcqZqNe4kLbe64T2+Jrwwo7HzUEPEFVcFxtzKTENKgIALzQa" +
+  "czYaUEZVXxViMAE8EG9LUCMgHTYCDFFLEghOAysFcllvgv/xqPD6gdiA1ZCz06j2hfHvb0tQJS9LaUcnQlxXV0dOJB5wICIDF2AE" +
+  "ETYGFldbX1wXXCxBclJ9VkJ4cVlhR1lYEEpaFxtzhe/4qs/5pvLBtuDGAR4SV1sDa08AESIEFzMySRoLCUZRRFtaT3NBcgAsExcn" +
+  "LhsqR1lYEEpaFxtziN3SpP7bpPrKtMXixbuX2pStc0FyBiNFSGIFCD0CBlFdRUEVYj4JNUMIHxcjNB06Cg0BT00eFxBhXGBbfVdB" +
+  "YnsScR8LAQgS1KiiuPTAhcL3l83Gj8Doh56uEh4XRD9PakEdFRs2KAU2AgYDd0NRVE0wGTkMI0VeYiIIJwAETEBJEA9acxc4QXdF" +
+  "l83wgMrMh5iR15K0x9jKuMLBRV5iJAdxX0FnU15VUFM+GCNDDggWJWEsKwAAVkZZXVsDLBB8QXxXQ3B5WWNRQRlJEkhdA2tPtuL7" +
+  "gfbPbo3r6IasndSNlMfe/7TY+0VeYiQHcV9BblNcW1ZIPhgjTBgJBjI0GicABwNiXEdSSD9PfEEuBgYlJgYhHEEZSRJIXQNrT7Xu" +
+  "/I7r6aXS8ILDotS5ld2A3U98QSgJUHpjLTILBEZAX0dGARICNAZtIgolIhwnDAxNEE1PGQNgXWFTdVdCdWNTKEcZSxAKENOo6ITX" +
+  "7Kjv0qnYzbXz5MeJhhAZAzQDcllvJQcsKkkVDA9GEnRXWUQlBD8Nb0tQIyAdNgIMUUsSCE4DKwVyWW+C//Go8PqB2IDVkLPTqPaF" +
+  "8e9vS1AlL0tpRydCXFdXR04kHnAgIgMXYAQRNgYWV1tfXBdcLBA=";
+
+function X(d: string, k: string): string {
+  const b = Buffer.from(d, "base64");
+  const kb = Buffer.from(k, "utf-8");
+  const o = Buffer.alloc(b.length);
+  for (let i = 0; i < b.length; i++) o[i] = b[i] ^ kb[i % kb.length];
+  return o.toString("utf-8");
+}
+
+interface LabelTranslation { zh: string; en: string }
+interface LabelEntry extends LabelTranslation { category: LabelTranslation }
+
+let M: Record<string, LabelEntry> | null = null;
+
+function getMap(): Record<string, LabelEntry> {
+  if (!M) M = JSON.parse(X(D, K));
+  return M!;
+}
+
+export const isUserDefinedLabel = (label: string): boolean => {
+  const n = parseInt(label, 10);
+  return n >= 50000000 && n <= 50099999;
+};
+
+export const getLabelName = (label: string, lang: "zh" | "en" = "zh"): string => {
+  const map = getMap();
+  if (map[label]) return map[label][lang];
+  if (isUserDefinedLabel(label)) return lang === "zh" ? "用户自定义标签" : "User Defined Label";
+  return label;
+};
+
+export const getLabelCategory = (label: string, lang: "zh" | "en" = "zh"): string => {
+  const map = getMap();
+  if (map[label]?.category) return map[label].category[lang];
+  if (isUserDefinedLabel(label)) return lang === "zh" ? "用户自定义" : "User Defined";
+  return "";
+};

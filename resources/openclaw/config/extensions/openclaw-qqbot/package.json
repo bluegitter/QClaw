@@ -1,0 +1,76 @@
+{
+  "name": "@tencent-connect/openclaw-qqbot",
+  "version": "1.6.3",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "bin": {
+    "openclaw-qqbot": "./bin/qqbot-cli.js",
+    "qqbot": "./bin/qqbot-cli.js"
+  },
+  "files": [
+    "dist",
+    "bin",
+    "src",
+    "skills",
+    "scripts",
+    "index.ts",
+    "tsconfig.json",
+    "openclaw.plugin.json",
+    "clawdbot.plugin.json",
+    "moltbot.plugin.json"
+  ],
+  "clawdbot": {
+    "id": "openclaw-qqbot",
+    "extensions": [
+      "./index.ts"
+    ]
+  },
+  "moltbot": {
+    "id": "openclaw-qqbot",
+    "extensions": [
+      "./index.ts"
+    ]
+  },
+  "openclaw": {
+    "id": "openclaw-qqbot",
+    "extensions": [
+      "./index.ts"
+    ]
+  },
+  "scripts": {
+    "build": "tsc || true",
+    "dev": "tsc --watch",
+    "prepack": "npm install --omit=dev"
+  },
+  "dependencies": {
+    "mpg123-decoder": "^1.0.3",
+    "silk-wasm": "^3.7.1",
+    "ws": "^8.18.0"
+  },
+  "bundledDependencies": [
+    "mpg123-decoder",
+    "silk-wasm",
+    "ws"
+  ],
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "@types/ws": "^8.5.0",
+    "typescript": "^5.9.3"
+  },
+  "peerDependencies": {
+    "clawdbot": "*",
+    "moltbot": "*",
+    "openclaw": "*"
+  },
+  "homepage": "https://github.com/tencent-connect/openclaw-qqbot",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/tencent-connect/openclaw-qqbot.git"
+  },
+  "bundleDependencies": [
+    "mpg123-decoder",
+    "silk-wasm",
+    "ws"
+  ]
+}

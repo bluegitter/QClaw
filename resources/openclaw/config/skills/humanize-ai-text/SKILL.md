@@ -1,6 +1,6 @@
 ---
 name: humanize-ai-text
-description: Humanize AI-generated text to bypass detection. This humanizer rewrites ChatGPT, Claude, and GPT content to sound natural and pass AI detectors like GPTZero, Turnitin, and Originality.ai. Based on Wikipedia's comprehensive "Signs of AI Writing" guide. Makes robotic AI writing undetectable and human-like.
+description: AI 生成文本人性化改写。将 ChatGPT、Claude、GPT 等生成的内容改写为自然流畅的表达，可通过 GPTZero、Turnitin、Originality.ai 等 AI 检测工具。基于维基百科"AI 写作特征"指南，让机械化的 AI 文本变得自然且不可检测。
 allowed-tools:
   - Read
   - Write

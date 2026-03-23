@@ -1,0 +1,39 @@
+{
+  "10101001": { "zh": "诱骗AI突破规则", "en": "Trick AI to Break Rules", "category": { "zh": "绕过AI安全限制", "en": "Bypass AI Safety Restrictions" } },
+  "10101002": { "zh": "篡改AI的任务目标", "en": "Hijack AI Task Objective", "category": { "zh": "绕过AI安全限制", "en": "Bypass AI Safety Restrictions" } },
+  "10101003": { "zh": "伪装恶意指令", "en": "Disguised Malicious Instructions", "category": { "zh": "绕过AI安全限制", "en": "Bypass AI Safety Restrictions" } },
+  "10101004": { "zh": "套取AI内部配置", "en": "Extract AI Internal Configuration", "category": { "zh": "绕过AI安全限制", "en": "Bypass AI Safety Restrictions" } },
+  "10101005": { "zh": "在文档中植入攻击指令", "en": "Inject Attack Instructions in Documents", "category": { "zh": "绕过AI安全限制", "en": "Bypass AI Safety Restrictions" } },
+
+  "10102001": { "zh": "诱导生成有害内容", "en": "Induce Harmful Content Generation", "category": { "zh": "有害内容生成", "en": "Harmful Content Generation" } },
+  "10102002": { "zh": "赌博/诈骗/毒品", "en": "Gambling/Fraud/Drugs", "category": { "zh": "有害内容生成", "en": "Harmful Content Generation" } },
+  "10102003": { "zh": "谩骂与歧视", "en": "Abuse and Discrimination", "category": { "zh": "有害内容生成", "en": "Harmful Content Generation" } },
+
+  "10103001": { "zh": "窃取环境变量/密钥", "en": "Steal Environment Variables/Keys", "category": { "zh": "信息窃取", "en": "Information Theft" } },
+  "10103002": { "zh": "窃取敏感文件", "en": "Steal Sensitive Files", "category": { "zh": "信息窃取", "en": "Information Theft" } },
+  "10103003": { "zh": "窃取浏览器数据", "en": "Steal Browser Data", "category": { "zh": "信息窃取", "en": "Information Theft" } },
+  "10103004": { "zh": "窃取凭证文件", "en": "Steal Credential Files", "category": { "zh": "信息窃取", "en": "Information Theft" } },
+  "10103005": { "zh": "静默信息收集", "en": "Silent Information Collection", "category": { "zh": "信息窃取", "en": "Information Theft" } },
+
+  "10104001": { "zh": "隐私数据外泄", "en": "Privacy Data Leakage", "category": { "zh": "隐私泄露", "en": "Privacy Breach" } },
+  "10104002": { "zh": "读取隐私文件", "en": "Read Private Files", "category": { "zh": "隐私泄露", "en": "Privacy Breach" } },
+  "10104003": { "zh": "操作摄像头/麦克风", "en": "Access Camera/Microphone", "category": { "zh": "隐私泄露", "en": "Privacy Breach" } },
+  "10104004": { "zh": "键盘记录", "en": "Keylogging", "category": { "zh": "隐私泄露", "en": "Privacy Breach" } },
+
+  "10105001": { "zh": "下载并执行恶意程序", "en": "Download and Execute Malware", "category": { "zh": "下载木马病毒", "en": "Malware Download" } },
+  "10105002": { "zh": "释放恶意文件", "en": "Drop Malicious Files", "category": { "zh": "下载木马病毒", "en": "Malware Download" } },
+  "10105003": { "zh": "伪装正常软件", "en": "Disguised as Legitimate Software", "category": { "zh": "下载木马病毒", "en": "Malware Download" } },
+  "10105004": { "zh": "连接恶意下载源", "en": "Connect to Malicious Download Source", "category": { "zh": "下载木马病毒", "en": "Malware Download" } },
+
+  "10106001": { "zh": "远程代码执行", "en": "Remote Code Execution", "category": { "zh": "恶意网络行为", "en": "Malicious Network Activity" } },
+  "10106002": { "zh": "访问恶意网址", "en": "Access Malicious URLs", "category": { "zh": "恶意网络行为", "en": "Malicious Network Activity" } },
+
+  "10107001": { "zh": "修改系统核心文件", "en": "Modify System Core Files", "category": { "zh": "系统破坏", "en": "System Damage" } },
+  "10107002": { "zh": "修改注册表", "en": "Modify Registry", "category": { "zh": "系统破坏", "en": "System Damage" } },
+
+  "10108001": { "zh": "高危系统调用", "en": "Dangerous System Calls", "category": { "zh": "危险代码执行", "en": "Dangerous Code Execution" } },
+  "10108002": { "zh": "进程注入", "en": "Process Injection", "category": { "zh": "危险代码执行", "en": "Dangerous Code Execution" } },
+  "10108003": { "zh": "权限提升操作", "en": "Privilege Escalation", "category": { "zh": "危险代码执行", "en": "Dangerous Code Execution" } },
+  "10108004": { "zh": "恶意/不可信插件", "en": "Malicious/Untrusted Plugin", "category": { "zh": "危险代码执行", "en": "Dangerous Code Execution" } },
+  "10108005": { "zh": "批量删除文件", "en": "Bulk File Deletion", "category": { "zh": "危险代码执行", "en": "Dangerous Code Execution" } }
+}

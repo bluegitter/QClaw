@@ -1,5 +1,35 @@
-import type { FuwuhaoMessage } from "../http/types.js";
 import { getWecomRuntime } from "./runtime.js";
+
+// ============================================
+// 类型定义
+// ============================================
+
+/**
+ * 微信服务号消息格式
+ * @description
+ * OpenClaw 内部对微信服务号消息的标准化格式。
+ * 兼容微信服务号 Webhook 推送的消息结构。
+ */
+export interface FuwuhaoMessage {
+  /** 消息类型 */
+  msgtype?: string;
+  /** 消息 ID（微信服务号格式） */
+  MsgId?: string;
+  /** 消息 ID（小程序格式） */
+  msgid?: string;
+  /** 消息内容 */
+  Content?: string;
+  /** 文本内容（小程序格式） */
+  text?: { content: string };
+  /** 发送者 ID（微信服务号格式） */
+  FromUserName?: string;
+  /** 发送者 ID（小程序格式） */
+  userid?: string;
+  /** 接收者 ID */
+  ToUserName?: string;
+  /** 消息创建时间（秒级时间戳） */
+  CreateTime?: number;
+}
 
 // ============================================
 // 渠道来源标签

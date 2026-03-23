@@ -1,0 +1,27 @@
+{
+  "id": "tool-sandbox",
+  "name": "工具执行沙箱",
+  "description": "对 AI Agent 的工具调用进行安全降权，配合 lowpriv wrapper 实现工具执行权限隔离",
+  "configSchema": {
+    "type": "object",
+    "properties": {
+      "auditLog": {
+        "type": "boolean",
+        "default": true,
+        "description": "是否记录工具调用审计日志"
+      },
+      "blockPatterns": {
+        "type": "array",
+        "items": { "type": "string" },
+        "default": [],
+        "description": "额外的危险命令阻断正则（在 OpenClaw 内置 Exec Approval System 之上）"
+      },
+      "denyWritePaths": {
+        "type": "array",
+        "items": { "type": "string" },
+        "default": [],
+        "description": "禁止 write_file 写入的路径前缀"
+      }
+    }
+  }
+}

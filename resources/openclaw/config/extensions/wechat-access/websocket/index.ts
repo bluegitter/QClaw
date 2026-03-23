@@ -2,32 +2,17 @@
 // WebSocket 模块导出
 // ============================================
 
-// 类型定义
+// 类型定义 - 从原生模块导入
 export type {
-  AGPEnvelope,
-  AGPMethod,
-  ContentBlock,
-  ToolCall,
-  ToolCallKind,
-  ToolCallStatus,
-  ToolLocation,
-  PromptPayload,
-  CancelPayload,
-  UpdatePayload,
-  UpdateType,
-  PromptResponsePayload,
-  StopReason,
-  PromptMessage,
-  CancelMessage,
-  UpdateMessage,
-  PromptResponseMessage,
-  WebSocketClientConfig,
+  // Re-export AGP protocol types from native module
+} from "@tencent/agp-native";
+export {
+  // Re-export ConnectionState enum
   ConnectionState,
-  WebSocketClientCallbacks,
-} from "./types.js";
+} from "@tencent/agp-native";
 
-// WebSocket 客户端
-export { WechatAccessWebSocketClient } from "./websocket-client.js";
+// 本地定义的适配器类型（用于内部消息转换）
+export type { UpdateMessage, UpdateType } from "./types.js";
 
 // 消息处理器
 export { handlePrompt, handleCancel } from "./message-handler.js";

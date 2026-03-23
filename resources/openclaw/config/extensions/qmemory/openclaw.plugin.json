@@ -1,0 +1,29 @@
+{
+  "id": "qmemory",
+  "name": "任务恢复",
+  "description": "任务恢复插件，记录任务执行过程中的 checkpoint，在 OpenClaw crash 重启后支持恢复中断的任务。",
+  "configSchema": {
+    "type": "object",
+    "properties": {
+      "walDir": {
+        "type": "string",
+        "description": "WAL 文件存储目录（可选，默认为 stateDir/qmemory）"
+      },
+      "maxWalFiles": {
+        "type": "integer",
+        "description": "保留的最大 WAL 文件数量，超出后清理最旧的",
+        "default": 20
+      },
+      "walRetentionMs": {
+        "type": "integer",
+        "description": "WAL 文件保留时长（毫秒），超出后自动清理",
+        "default": 86400000
+      },
+      "autoRecovery": {
+        "type": "boolean",
+        "description": "网关启动时是否自动检测未完成任务并准备恢复上下文",
+        "default": true
+      }
+    }
+  }
+}

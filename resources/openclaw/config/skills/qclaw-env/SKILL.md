@@ -77,7 +77,8 @@ done
 ```
 
 ```powershell
-# Windows — 全量环境快照
+# Windows — 全量环境快照（先切 UTF-8 防乱码）
+chcp 65001 >nul
 Write-Host "=== 系统环境快照 ==="
 Write-Host "--- 平台 ---"
 $ver = [System.Environment]::OSVersion.Version
@@ -134,7 +135,8 @@ fi
 ```
 
 ```powershell
-# Windows — 网络检测
+# Windows — 网络检测（先切 UTF-8 防乱码）
+chcp 65001 >nul
 Write-Host "=== 网络连通性检测 ==="
 @("https://github.com", "https://raw.githubusercontent.com", "https://registry.npmjs.org", "https://pypi.org") | ForEach-Object {
     try {

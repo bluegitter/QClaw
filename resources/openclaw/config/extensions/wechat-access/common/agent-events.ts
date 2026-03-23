@@ -1,4 +1,4 @@
-import type { onAgentEvent as OnAgentEventType } from "openclaw/plugin-sdk";
+import { getWecomRuntime } from "./runtime.js";
 
 export type AgentEventStream = "lifecycle" | "tool" | "assistant" | "error" | (string & {});
 
@@ -11,39 +11,33 @@ export type AgentEventPayload = {
   sessionKey?: string;
 };
 
-// 动态导入，兼容 openclaw 未导出该函数的情况
-let _onAgentEvent: typeof OnAgentEventType | undefined;
-
-// SDK 加载完成的 Promise，确保只加载一次
-const sdkReady: Promise<typeof OnAgentEventType | undefined> = (async () => {
-  try {
-    const sdk = await import("openclaw/plugin-sdk");
-    if (typeof sdk.onAgentEvent === "function") {
-      _onAgentEvent = sdk.onAgentEvent;
-    }
-  } catch {
-    // ignore
-  }
-  return _onAgentEvent;
-})();
+/** onAgentEvent 的 listener 签名 */
+type AgentEventListener = (evt: AgentEventPayload) => void;
 
 /**
  * 注册 Agent 事件监听器。
  *
- * 修复了原版的时序问题：原版使用 loadOnAgentEvent().then() 异步注册，
- * 导致在 dispatchReplyWithBufferedBlockDispatcher 调用之前注册的监听器
- * 实际上在 Agent 开始产生事件时还未真正挂载，造成事件全部丢失。
+ * 通过 PluginRuntime.events.onAgentEvent 获取全局事件总线的订阅函数。
+ * 这是框架推荐的路径，确保事件监听器能正确挂载到全局 listeners Set。
  *
- * 新版通过 await sdkReady 确保 SDK 加载完成后再注册监听器，
- * 调用方需要 await 此函数返回的 Promise，再调用 dispatchReply。
+ * 注意：openclaw/plugin-sdk 的 index.js 并未重新导出 onAgentEvent，
+ * 之前使用 import("openclaw/plugin-sdk").onAgentEvent 的方式获取到的始终是 undefined，
+ * 导致监听器从未真正注册，所有 lifecycle/assistant/tool 事件全部丢失。
+ *
+ * 现在改为从 PluginRuntime.events.onAgentEvent 获取，这是框架内部使用的同一个
+ * 全局 Set-based 发布/订阅实例，能正确接收所有 Agent 事件。
  */
-export const onAgentEvent = async (
-  listener: Parameters<typeof OnAgentEventType>[0]
-): Promise<() => boolean> => {
-  const fn = await sdkReady;
-  if (fn) {
+export const onAgentEvent = (
+  listener: AgentEventListener
+): () => boolean => {
+  const runtime = getWecomRuntime();
+  const fn = (runtime as any).events?.onAgentEvent;
+  if (typeof fn === "function") {
     const unsubscribe = fn(listener);
     return unsubscribe;
   }
+  console.warn(
+    "[wechat-access] onAgentEvent 不可用: runtime.events.onAgentEvent 未找到"
+  );
   return () => false;
 };

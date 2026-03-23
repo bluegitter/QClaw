@@ -1,7 +1,7 @@
 ---
 name: skill-vetter
 version: 1.0.0
-description: Security-first skill vetting for AI agents. Use before installing any skill from ClawdHub, GitHub, or other sources. Checks for red flags, permission scope, and suspicious patterns.
+description: 面向 AI Agent 的安全优先技能审查工具。在从 ClawdHub、GitHub 或其他来源安装任何技能之前使用，检查危险标志、权限范围和可疑模式。
 metadata:
   openclaw:
     emoji: "🔒"

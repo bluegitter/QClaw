@@ -1,5 +1,5 @@
 {
-  "name": "wechat-access",
+  "name": "@tencent/wechat-access",
   "version": "1.0.0",
   "type": "module",
   "description": "简化的企业微信 服务号 接收消息 Demo",
@@ -26,15 +26,15 @@
       "order": 85
     },
     "install": {
-      "npmSpec": "@yanhaidao/wechat-access",
+      "npmSpec": "@tencent/wechat-access",
       "localPath": "extensions/wechat-access",
       "defaultChoice": "npm"
     }
   },
   "dependencies": {
+    "@tencent/agp-native": "0.1.0",
     "fast-xml-parser": "^5.4.1",
     "undici": "^7.20.0",
-    "ws": "^8.18.0",
     "zod": "^4.3.6"
   },
   "peerDependencies": {

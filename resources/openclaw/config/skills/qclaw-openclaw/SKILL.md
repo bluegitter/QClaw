@@ -67,6 +67,30 @@ bash <skill_dir>/scripts/openclaw-mac.sh config get gateway.port
 bash <skill_dir>/scripts/openclaw-mac.sh config set agents.defaults.model.primary "claude-sonnet-4-20250514"
 ```
 
+> 配置生效规则：OpenClaw 的配置修改统一支持热加载，修改后自动在进程内生效。
+> 严禁执行任何服务重启行为（包括但不限于 `gateway/daemon restart`、`kill PID`、`taskkill`）。
+
+#### [MANDATORY] 修改前官方 Schema 校验规则
+
+对所有会修改 `openclaw.json` 的操作，必须先完成官方文档校验：
+
+1. **先查官方文档**：修改前必须先查询 OpenClaw 官方文档中对应配置项（字段路径、类型、可选值、约束、默认值）。
+2. **无法确认即拒绝**：若未找到对应官方文档，或无法确认该字段符合官方 schema，必须拒绝本次修改，不得猜测字段或试错写入。
+3. **只允许写入官方定义字段**：禁止新增或写入官方 schema 未定义字段，禁止写入类型不匹配值。
+4. **先确认再落盘**：只有在确认变更符合官方 schema 后，才允许执行 `config set/unset` 或其他写入操作。
+
+> 拒绝话术要求：当缺少官方 schema 依据时，明确回复“缺少 OpenClaw 官方 schema 依据，拒绝修改 `openclaw.json`”。
+
+#### [MANDATORY] 配置修改失败自动回滚规则
+
+对所有修改 openclaw.json 配置文件的操作，必须遵循以下事务化规则：
+
+1. **先备份后修改**：执行修改前，先保存 `openclaw.json` 的修改前快照（仅用于本次变更回滚）。
+2. **失败即回滚**：如果上下文日志/执行结果显示本次修改失败（无论失败原因），必须立即回滚到本次修改前快照。
+3. **只回滚本次变更**：回滚目标是撤销当前这一次修改，不得覆盖更早的历史有效配置。
+4. **禁止跳过回滚**：检测到失败后，不允许继续后续配置写入，必须先完成回滚再继续。
+5. **回滚后复核**：回滚完成后，必须重新读取目标配置项，确认已恢复到修改前状态。
+
 ### cron — 定时任务
 
 ```bash
@@ -240,33 +264,21 @@ bash <skill_dir>/scripts/openclaw-mac.sh update status
 | `reset` | 破坏性操作，会清除所有本地配置和状态 |
 | `uninstall` | 破坏性操作，会卸载服务和数据 |
 
-## 重启 OpenClaw 服务
+## 配置热加载与进程内生效
 
-如果需要重启 OpenClaw（例如修改配置后生效），**不要使用 gateway/daemon 命令**。
+OpenClaw 的配置修改统一采用热加载机制：
 
-正确做法：读取 `~/.qclaw/qclaw.json` 中的 PID，发送 SIGTERM 信号，Electron 守护进程会自动拉起新进程。
+- 通过本 skill 执行 `config set/unset` 后，无需重启服务
+- 配置会自动在当前进程内重载并生效
+- 禁止任何形式的服务重启操作（包括 `gateway/daemon restart`、`kill`、`taskkill`）
 
-### macOS
+如配置未即时体现，请先用只读命令核对当前状态：
 
 ```bash
-# 读取 PID
-PID=$(cat ~/.qclaw/qclaw.json | python3 -c "import sys,json; print(json.load(sys.stdin)['cli']['pid'])")
-
-# 优雅终止（Electron Supervisor 会自动重启）
-kill "$PID"
+bash <skill_dir>/scripts/openclaw-mac.sh config get <dot.path>
+bash <skill_dir>/scripts/openclaw-mac.sh status
+bash <skill_dir>/scripts/openclaw-mac.sh health
 ```
-
-### Windows
-
-```cmd
-REM 读取 PID（使用 PowerShell 解析 JSON）
-for /f %%i in ('powershell -Command "(Get-Content ~/.qclaw/qclaw.json | ConvertFrom-Json).cli.pid"') do set PID=%%i
-
-REM 终止进程（Electron Supervisor 会自动重启）
-taskkill /PID %PID%
-```
-
-> 不要使用 `kill -9` 或 `taskkill /F`，优雅终止可以让 OpenClaw 正确清理资源。
 
 ## 故障排查
 
@@ -276,7 +288,7 @@ QClaw 桌面应用未启动或未成功启动 OpenClaw 服务。请先启动 QCl
 
 ### PID 无效（进程不存在）
 
-OpenClaw 服务可能正在重启中。等待几秒后重新读取 `qclaw.json`，PID 会在新进程启动后更新。
+配置热加载过程中状态可能短暂更新。等待几秒后重新查询 `status/health` 即可。
 
 ### 命令执行报 Gateway 连接失败
 
@@ -286,8 +298,8 @@ Gateway 服务可能未就绪。先检查健康状态：
 bash <skill_dir>/scripts/openclaw-mac.sh health
 ```
 
-如果持续失败，通过 kill PID 触发 Electron 守护进程重启服务。
+如果持续失败，执行 `doctor` 并收集日志，不要进行任何重启操作。
 
 ### 脚本报错找不到 Node 二进制或 openclaw.mjs
 
-`qclaw.json` 中的路径可能已过期（应用升级后路径变化）。重启 QClaw 应用，元信息文件会自动更新。
+`qclaw.json` 中的路径可能已过期（应用升级后路径变化）。请执行 `status/doctor` 重新校验元信息并收集日志反馈。

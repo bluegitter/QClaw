@@ -1,5 +1,6 @@
 import fs from 'fs'
 import path from 'path'
+import os from 'os'
 import { getStoreManager } from '../server/store/index.js'
 
 const ALWAYS_ENABLED_BUNDLED_SKILL_IDS = new Set([
@@ -30,6 +31,18 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null
 }
 
+function expandHomeDir(inputPath: string): string {
+  if (inputPath === '~') {
+    return os.homedir()
+  }
+
+  if (inputPath.startsWith('~/')) {
+    return path.join(os.homedir(), inputPath.slice(2))
+  }
+
+  return inputPath
+}
+
 function listBundledSkillIds(bundledSkillsDir: string): string[] {
   if (!fs.existsSync(bundledSkillsDir)) {
     return []
@@ -40,6 +53,19 @@ function listBundledSkillIds(bundledSkillsDir: string): string[] {
     .filter((entry) => entry.isDirectory())
     .map((entry) => entry.name)
     .sort()
+}
+
+function listDirectChildSkillDirs(rootDir: string): string[] {
+  if (!fs.existsSync(rootDir) || !fs.statSync(rootDir).isDirectory()) {
+    return []
+  }
+
+  return fs
+    .readdirSync(rootDir, { withFileTypes: true })
+    .filter((entry) => entry.isDirectory())
+    .map((entry) => path.join(rootDir, entry.name))
+    .filter((dirPath) => fs.existsSync(path.join(dirPath, 'SKILL.md')))
+    .sort((left, right) => path.basename(left).localeCompare(path.basename(right), 'zh-CN'))
 }
 
 function readSkillMarkdownSummary(content: string, fallbackName: string): {
@@ -118,12 +144,12 @@ export function inspectSkillDirectory(
   bundledSkillsDir?: string,
   managedSkillsDir?: string,
 ): SkillDirectoryInspection {
-  const resolvedDir = path.resolve(skillDir)
+  const resolvedDir = path.resolve(expandHomeDir(skillDir))
   const skillId = path.basename(resolvedDir)
   const isBundled = bundledSkillsDir
-    ? path.dirname(resolvedDir) === path.resolve(bundledSkillsDir)
+    ? path.dirname(resolvedDir) === path.resolve(expandHomeDir(bundledSkillsDir))
     : false
-  const managedRoot = managedSkillsDir ? path.resolve(managedSkillsDir) : ''
+  const managedRoot = managedSkillsDir ? path.resolve(expandHomeDir(managedSkillsDir)) : ''
   const source =
     isBundled
       ? 'builtin'
@@ -218,6 +244,45 @@ export function listBundledSkills(
     )
     .filter((item): item is SkillDirectoryInfo & { isValid: true } => item.isValid)
     .map(({ isValid: _isValid, error: _error, ...item }) => item)
+}
+
+export function listSkillsFromRoots(
+  rootDirs: string[],
+  bundledSkillsDir?: string,
+  managedSkillsDir?: string,
+): SkillDirectoryInfo[] {
+  const seen = new Set<string>()
+  const results: SkillDirectoryInfo[] = []
+
+  for (const rootDir of rootDirs) {
+    if (typeof rootDir !== 'string' || !rootDir.trim()) {
+      continue
+    }
+
+    const resolvedRoot = path.resolve(expandHomeDir(rootDir))
+    const directInspection = inspectSkillDirectory(resolvedRoot, bundledSkillsDir, managedSkillsDir)
+    if (directInspection.isValid) {
+      if (!seen.has(directInspection.path)) {
+        seen.add(directInspection.path)
+        const { isValid: _isValid, error: _error, ...item } = directInspection
+        results.push(item)
+      }
+      continue
+    }
+
+    for (const childDir of listDirectChildSkillDirs(resolvedRoot)) {
+      const inspected = inspectSkillDirectory(childDir, bundledSkillsDir, managedSkillsDir)
+      if (!inspected.isValid || seen.has(inspected.path)) {
+        continue
+      }
+
+      seen.add(inspected.path)
+      const { isValid: _isValid, error: _error, ...item } = inspected
+      results.push(item)
+    }
+  }
+
+  return results.sort((left, right) => left.name.localeCompare(right.name, 'zh-CN'))
 }
 
 export function getSelectedBundledSkillIds(

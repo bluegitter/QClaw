@@ -1,0 +1,32 @@
+{
+  "galileo": {
+    "enabled": true,
+    "endpoint": "https://galileotelemetry.tencent.com",
+    "resource": {
+      "target": "RPC.qclaw.server",
+      "env_name": "",
+      "instance": "",
+      "container_name": "",
+      "version": "",
+      "con_setid": ""
+    },
+    "trace": {
+      "enabled": true,
+      "genAi": {
+        "system": "openclaw",
+        "appName": "openclaw",
+        "agentName": "openclaw-agent",
+        "agentId": "openclaw-agent-001"
+      }
+    },
+    "metrics": {
+      "enabled": true,
+      "genAi": {
+        "system": "openclaw",
+        "appName": "openclaw",
+        "agentName": "openclaw-agent",
+        "agentId": "openclaw-agent-001"
+      }
+    }
+  }
+}

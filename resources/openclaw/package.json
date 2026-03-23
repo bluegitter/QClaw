@@ -2,7 +2,10 @@
   "name": "@guanjia-openclaw/openclaw",
   "version": "0.0.1",
   "private": true,
+  "scripts": {
+    "postinstall": "npx patch-package"
+  },
   "dependencies": {
-    "openclaw": "2026.2.24"
+    "openclaw": "2026.3.13"
   }
 }

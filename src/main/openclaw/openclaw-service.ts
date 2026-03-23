@@ -6,6 +6,7 @@ import path from 'path'
 import os from 'os'
 import { EventEmitter } from 'events'
 import type { ProcessStatus, ProcessStatusType, LogEvent } from '@guanjia-openclaw/shared'
+import pkg from 'node-machine-id'
 import { getOpenClawPath, getExecNodePath, getDefaultConfigSourcePath, getBundledSkillsDir, getBundledExtensionsDir } from './paths.js'
 import { cleanupForcedExtensionConfigs, cleanupDuplicateExtensions, injectEnvUrls, stripExtraPluginConfigKeys } from './config-patcher.js'
 import { getSelectedBundledSkillDirs } from './skill-selection.js'
@@ -40,6 +41,8 @@ import {
   PORT_RELEASE_CHECK_INTERVAL_MS,
   PROCESS_KILL_COMMAND_TIMEOUT_MS,
 } from '../server/constants.js'
+
+const { machineIdSync } = pkg
 
 interface ServiceOptions {
   verbose?: boolean
@@ -314,7 +317,27 @@ export class OpenClawService extends EventEmitter {
     // 改为 in-process restart，确保 Electron 不丢失对子进程的追踪
     env.OPENCLAW_NO_RESPAWN = ENV_VALUE_ENABLED
 
+    // 新版 wechat-access 通道会从环境变量解析 guid/userId。
+    // guid 缺失时会导致配置阶段直接失败；这里默认使用设备 machineId 兜底。
+    env.QCLAW_USER_GUID = env.QCLAW_USER_GUID || this.getDefaultUserGuid()
+    env.QCLAW_USER_ID = env.QCLAW_USER_ID || ''
+
     return env
+  }
+
+  private getDefaultUserGuid(): string {
+    try {
+      return machineIdSync()
+    } catch (error) {
+      this.emit(
+        'log',
+        this.createLogEntry(
+          'warn',
+          `Failed to resolve machine id for QCLAW_USER_GUID: ${error instanceof Error ? error.message : 'Unknown error'}`,
+        ),
+      )
+      return ''
+    }
   }
 
   /**
@@ -921,36 +944,39 @@ export class OpenClawService extends EventEmitter {
    *
    * 当前打包资源中存在:
    * - wechat-access
-   * - content-security
+   * - content-plugin
+   * - qmemory
+   * - tool-sandbox
+   * - pcmgr-ai-security
    *
    * 历史配置中可能残留:
-   * - content-plugin      -> content-security
-   * - qmemory            -> 已移除
-   * - tool-sandbox       -> 已移除
-   * - pcmgr-ai-security  -> 已移除
+   * - content-security         -> 已移除，恢复为 content-plugin
+   * - openclaw-plugin-yuanbao  -> 已移除
+   * - channels.yuanbao         -> 当前资源中不存在
    */
   private migrateLegacyPluginEntries(config: Record<string, unknown>): boolean {
     const plugins = config.plugins as Record<string, unknown> | undefined
     const entries = plugins?.entries as Record<string, unknown> | undefined
     const allow = Array.isArray(plugins?.allow) ? (plugins?.allow as unknown[]) : null
+    const channels = config.channels as Record<string, unknown> | undefined
 
-    if (!entries && !allow) {
+    if (!entries && !allow && !channels) {
       return false
     }
 
     let changed = false
 
-    const legacyContentPlugin = entries?.['content-plugin'] as Record<string, unknown> | undefined
     const contentSecurity = entries?.['content-security'] as Record<string, unknown> | undefined
+    const contentPlugin = entries?.['content-plugin'] as Record<string, unknown> | undefined
 
-    if (legacyContentPlugin) {
-      if (!contentSecurity && entries) {
-        entries['content-security'] = structuredClone(legacyContentPlugin)
+    if (contentSecurity) {
+      if (!contentPlugin && entries) {
+        entries['content-plugin'] = structuredClone(contentSecurity)
         changed = true
       }
 
-      const targetEntry = entries?.['content-security'] as Record<string, unknown> | undefined
-      const legacyConfig = legacyContentPlugin.config as Record<string, unknown> | undefined
+      const targetEntry = entries?.['content-plugin'] as Record<string, unknown> | undefined
+      const legacyConfig = contentSecurity.config as Record<string, unknown> | undefined
       const targetConfig = targetEntry?.config as Record<string, unknown> | undefined
 
       if (targetEntry && legacyConfig?.token && targetConfig && !targetConfig.token) {
@@ -958,22 +984,22 @@ export class OpenClawService extends EventEmitter {
         changed = true
       }
 
-      if (entries && 'content-plugin' in entries) {
-        delete entries['content-plugin']
+      if (entries && 'content-security' in entries) {
+        delete entries['content-security']
         changed = true
       }
 
-      if (this.removePluginAllowEntry(allow, 'content-plugin')) {
+      if (this.removePluginAllowEntry(allow, 'content-security')) {
         changed = true
       }
 
       this.emit(
         'log',
-        this.createLogEntry('info', 'Migrated legacy plugin entry content-plugin -> content-security'),
+        this.createLogEntry('info', 'Migrated stale plugin entry content-security -> content-plugin'),
       )
     }
 
-    for (const removedPluginId of ['qmemory', 'tool-sandbox', 'pcmgr-ai-security'] as const) {
+    for (const removedPluginId of ['openclaw-plugin-yuanbao', 'yuanbao'] as const) {
       if (entries && removedPluginId in entries) {
         delete entries[removedPluginId]
         changed = true
@@ -986,6 +1012,15 @@ export class OpenClawService extends EventEmitter {
       if (this.removePluginAllowEntry(allow, removedPluginId)) {
         changed = true
       }
+    }
+
+    if (channels && 'yuanbao' in channels) {
+      delete channels.yuanbao
+      changed = true
+      this.emit(
+        'log',
+        this.createLogEntry('info', 'Removed obsolete channel config: yuanbao'),
+      )
     }
 
     return changed

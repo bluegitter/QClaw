@@ -12,10 +12,10 @@
  *   AGP PromptPayload → FuwuhaoMessage → MsgContext（OpenClaw 内部格式）
  */
 
-import type { PromptPayload, ContentBlock } from "./types.js";
-import type { FuwuhaoMessage } from "../http/types.js";
-import { getWecomRuntime } from "../common/runtime.js";
-import { buildMessageContext } from "../common/message-context.js";
+import type { PromptPayload, ContentBlock } from '@tencent/agp-native'
+import type { FuwuhaoMessage } from '../common/message-context.js'
+import { getWecomRuntime } from '../common/runtime.js'
+import { buildMessageContext } from '../common/message-context.js'
 
 // ============================================
 // 消息适配器
@@ -46,10 +46,10 @@ import { buildMessageContext } from "../common/message-context.js";
  */
 export const extractTextFromContent = (content: ContentBlock[]): string => {
   return content
-    .filter((block) => block.type === "text")
+    .filter((block) => block.type === 'text')
     .map((block) => block.text)
-    .join("\n");
-};
+    .join('\n')
+}
 
 /**
  * 将 AGP session.prompt 载荷转换为 FuwuhaoMessage 格式
@@ -76,17 +76,17 @@ export const promptPayloadToFuwuhaoMessage = (
   payload: PromptPayload,
   userId: string
 ): FuwuhaoMessage => {
-  const textContent = extractTextFromContent(payload.content);
+  const textContent = extractTextFromContent(payload.content)
 
   return {
-    msgtype: "text",
-    MsgId: payload.prompt_id,   // 使用 prompt_id 作为消息唯一 ID
+    msgtype: 'text',
+    MsgId: payload.prompt_id, // 使用 prompt_id 作为消息唯一 ID
     Content: textContent,
     FromUserName: userId,
-    ToUserName: "fuwuhao_bot",
+    ToUserName: 'fuwuhao_bot',
     CreateTime: Math.floor(Date.now() / 1000), // 秒级时间戳
-  };
-};
+  }
+}
 
 /**
  * 构建 WebSocket 消息的完整上下文
@@ -110,7 +110,10 @@ export const promptPayloadToFuwuhaoMessage = (
  * 通过这种适配方式，WebSocket 通道和 HTTP 通道共享同一套路由和会话管理逻辑，
  * 确保两个通道的行为完全一致。
  */
-export const buildWebSocketMessageContext = (payload: PromptPayload, userId: string) => {
-  const message = promptPayloadToFuwuhaoMessage(payload, userId);
-  return buildMessageContext(message);
-};
+export const buildWebSocketMessageContext = (
+  payload: PromptPayload,
+  userId: string
+) => {
+  const message = promptPayloadToFuwuhaoMessage(payload, userId)
+  return buildMessageContext(message)
+}

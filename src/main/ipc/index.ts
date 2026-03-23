@@ -14,7 +14,7 @@ import { readConfigFileSync, writeConfigFile } from '../common/config-file.js'
 import { LOG_BUFFER_CAPACITY } from '../constants.js'
 import { OPENCLAW_DEFAULT_GATEWAY_PORT, OPENCLAW_CONFIG_PATH } from '../openclaw/constants.js'
 import { getBundledSkillsDir, getDefaultConfigSourcePath, getManagedSkillsDir } from '../openclaw/paths.js'
-import { inspectSkillDirectory, listBundledSkills } from '../openclaw/skill-selection.js'
+import { inspectSkillDirectory, listBundledSkills, listSkillsFromRoots } from '../openclaw/skill-selection.js'
 import { importSkillFromGitHub, removeManagedSkill } from '../openclaw/skill-installer.js'
 import { LOCALHOST_ADDRESS } from '../common/constants.js'
 import { getChannelFilePath } from '../common/resource-paths.js'
@@ -861,6 +861,17 @@ export function setupIpcHandlers(): void {
 
   ipcMain.handle('app:getSkillCatalog', async () => {
     return listBundledSkills(getBundledSkillsDir(), getManagedSkillsDir())
+  })
+
+  ipcMain.handle('app:listSkillsFromRoots', async (
+    _event: IpcMainInvokeEvent,
+    dirPaths: string[],
+  ) => {
+    return listSkillsFromRoots(
+      Array.isArray(dirPaths) ? dirPaths : [],
+      getBundledSkillsDir(),
+      getManagedSkillsDir(),
+    )
   })
 
   ipcMain.handle('app:inspectSkillDirectory', async (

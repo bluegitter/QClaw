@@ -171,6 +171,31 @@ function buildAppSources() {
   run(pnpmCommand, ['build'], { cwd: repoRoot })
 }
 
+function ensureBundledOpenClawRuntime() {
+  const openclawEntry = path.join(bundledOpenClawSource, 'node_modules', 'openclaw', 'openclaw.mjs')
+  if (fs.existsSync(openclawEntry)) {
+    return
+  }
+
+  const attempts = [
+    ['ci'],
+    ['install'],
+  ]
+
+  for (const args of attempts) {
+    const result = spawnSync('npm', args, {
+      cwd: bundledOpenClawSource,
+      stdio: 'inherit',
+    })
+
+    if (result.status === 0 && fs.existsSync(openclawEntry)) {
+      return
+    }
+  }
+
+  throw new Error(`Bundled OpenClaw runtime not found after npm install attempts: ${openclawEntry}`)
+}
+
 function verifyPackagedEntry() {
   ensureExists(path.join(appPayload, 'out', 'main', 'index.cjs'), 'Packaged main entry')
   ensureExists(path.join(appPayload, 'out', 'preload', 'index.cjs'), 'Packaged preload entry')
@@ -213,6 +238,7 @@ function verifyCodeSignature() {
 function main() {
   ensureExists(electronApp, 'Electron.app template')
   buildIcns()
+  ensureBundledOpenClawRuntime()
   buildAppSources()
   cleanDir(outputDir)
   fs.cpSync(electronApp, outputApp, { recursive: true, verbatimSymlinks: true })

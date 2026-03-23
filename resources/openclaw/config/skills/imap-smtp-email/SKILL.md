@@ -1,17 +1,10 @@
 ---
 name: imap-smtp-email
-description: Read and send email via IMAP/SMTP. Check for new/unread messages, fetch content, search mailboxes, mark as read/unread, and send emails with attachments. Works with any IMAP/SMTP server including Gmail, Outlook, 163.com, vip.163.com, 126.com, vip.126.com, 188.com, and vip.188.com.
+description: 通过 IMAP/SMTP 收发邮件。支持查看新邮件/未读邮件、获取邮件内容、搜索邮箱、标记已读/未读，以及发送带附件的邮件。兼容所有 IMAP/SMTP 邮件服务器，包括 Gmail、Outlook、163.com、vip.163.com、126.com、vip.126.com、188.com 和 vip.188.com。
 metadata:
   openclaw:
     emoji: "📧"
     requires:
-      env:
-        - IMAP_HOST
-        - IMAP_USER
-        - IMAP_PASS
-        - SMTP_HOST
-        - SMTP_USER
-        - SMTP_PASS
       bins:
         - node
         - npm

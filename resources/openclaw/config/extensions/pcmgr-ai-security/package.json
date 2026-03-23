@@ -1,0 +1,19 @@
+{
+  "name": "pcmgr-ai-security",
+  "version": "1.0.2",
+  "type": "module",
+  "description": "电脑管家 AI 安全插件 - 提供 Prompt 安全检测、工具调用审计、Skill 加载审计和脚本写入审计能力。",
+  "author": "leotwang",
+  "openclaw": {
+    "extensions": [
+      "./index.ts"
+    ]
+  },
+  "dependencies": {
+    "archiver": "^7.0.1",
+    "node-machine-id": "^1.1.12"
+  },
+  "peerDependencies": {
+    "openclaw": ">=2026.1.26"
+  }
+}

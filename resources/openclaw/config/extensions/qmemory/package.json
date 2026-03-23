@@ -1,0 +1,15 @@
+{
+  "name": "qmemory",
+  "version": "1.0.0",
+  "type": "module",
+  "description": "任务恢复插件，在 OpenClaw crash 重启后自动恢复中断的任务",
+  "author": "guanjia-openclaw",
+  "openclaw": {
+    "extensions": [
+      "./index.ts"
+    ]
+  },
+  "peerDependencies": {
+    "openclaw": ">=2026.1.26"
+  }
+}

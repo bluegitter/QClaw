@@ -103,6 +103,8 @@ const electronAPI: ElectronAPI = {
       ipcRenderer.invoke('app:sign-device-payload', privateKey, payload),
     getSkillCatalog: () =>
       ipcRenderer.invoke('app:getSkillCatalog'),
+    listSkillsFromRoots: (dirPaths: string[]) =>
+      ipcRenderer.invoke('app:listSkillsFromRoots', dirPaths),
     inspectSkillDirectory: (dirPath: string) =>
       ipcRenderer.invoke('app:inspectSkillDirectory', dirPath),
     selectSkillDirectory: () =>

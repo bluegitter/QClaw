@@ -1,0 +1,67 @@
+{
+  "id": "content-plugin",
+  "name": "content-plugin",
+  "description": "content-plugin，保护 LLM 和 Agent 生命周期免受有害内容侵害。",
+  "configSchema": {
+    "type": "object",
+    "properties": {
+      "endpoint": {
+        "type": "string",
+        "description": "CreateTask API 完整地址（如 https://jprx.sparta.html5.qq.com/data/4064/forward）"
+      },
+      "token": {
+        "type": "string",
+        "description": "OpenClaw Channel Token，用于后端代理接口鉴权"
+      },
+      "openClawDir": {
+        "type": "string",
+        "description": "OpenClaw 状态目录（可选，默认自动检测）"
+      },
+      "enableFetch": {
+        "type": "boolean",
+        "description": "是否拦截 global.fetch（LLM 请求审核）",
+        "default": true
+      },
+      "enableBeforeToolCall": {
+        "type": "boolean",
+        "description": "是否审核工具调用前",
+        "default": true
+      },
+      "enableAfterToolCall": {
+        "type": "boolean",
+        "description": "是否审核工具调用后",
+        "default": true
+      },
+      "logRecord": {
+        "type": "boolean",
+        "description": "是否启用详细日志",
+        "default": false
+      },
+      "failureThreshold": {
+        "type": "integer",
+        "description": "触发降级的连续失败次数",
+        "default": 3
+      },
+      "retryInterval": {
+        "type": "integer",
+        "description": "降级后探测基础间隔（秒）",
+        "default": 60
+      },
+      "maxRetryInterval": {
+        "type": "integer",
+        "description": "探测最大间隔（秒）",
+        "default": 3600
+      },
+      "timeoutMs": {
+        "type": "integer",
+        "description": "API 请求超时（毫秒）",
+        "default": 5000
+      },
+      "blockLevel": {
+        "type": "integer",
+        "description": "ResultTypeLevel >= 此值时打击，低于此值放过",
+        "default": 300
+      }
+    }
+  }
+}

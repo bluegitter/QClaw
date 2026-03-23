@@ -4,20 +4,24 @@
       "model": {
         "primary": "qclaw/modelroute"
       },
-      "workspace": "~/.openclaw/workspace"
+      "workspace": "~/.openclaw/workspace",
+      "maxConcurrent": 3,
+      "timeoutSeconds": 72000
     }
   },
   "skills": {
     "load": {
-      "extraDirs": []
+      "extraDirs": [
+        "~/.qclaw/skills"
+      ]
     }
   },
   "models": {
     "mode": "merge",
     "providers": {
       "qclaw": {
-        "baseUrl": "",
-        "apiKey": "",
+        "baseUrl": "${QCLAW_LLM_BASE_URL}",
+        "apiKey": "${QCLAW_LLM_API_KEY}",
         "api": "openai-completions",
         "models": [
           {
@@ -28,9 +32,19 @@
       }
     }
   },
+  "tools": {
+    "web": {
+      "search": {
+        "enabled": true
+      }
+    }
+  },
   "browser": {
     "enabled": true,
-    "defaultProfile": "openclaw"
+    "defaultProfile": "openclaw",
+    "ssrfPolicy": {
+      "dangerouslyAllowPrivateNetwork": false
+    }
   },
   "gateway": {
     "port": 18789,
@@ -38,10 +52,12 @@
     "bind": "loopback",
     "auth": {
       "mode": "token",
-      "token": "ad264d2126b9ccfcd517f57e316d57beb73e39c24295e54f"
+      "token": ""
     },
     "controlUi": {
-      "allowedOrigins": ["null"]
+      "allowedOrigins": [
+        "null"
+      ]
     },
     "tailscale": {
       "mode": "off",
@@ -50,21 +66,129 @@
   },
   "channels": {
     "wechat-access": {
-      "enabled": false,
+      "enabled": true,
       "token": "",
-      "wsUrl": ""
+      "wsUrl": "${QCLAW_WECHAT_WS_URL}",
+      "guid": "${QCLAW_USER_GUID}",
+      "userId": "${QCLAW_USER_ID}"
+    },
+    "qqbot": {
+      "enabled": false,
+      "allowFrom": [
+        "*"
+      ],
+      "appId": "${QCLAW_QQBOT_APP_ID}",
+      "clientSecret": "${QCLAW_QQBOT_CLIENT_SECRET}"
+    },
+    "feishu": {
+      "enabled": false,
+      "allowFrom": [
+        "*"
+      ],
+      "dmPolicy": "open",
+      "appId": "${QCLAW_FEISHU_APP_ID}",
+      "appSecret": "${QCLAW_FEISHU_APP_SECRET}"
+    },
+    "dingtalk-connector": {
+      "enabled": false,
+      "allowFrom": [
+        "*"
+      ],
+      "clientId": "${QCLAW_DINGTALK_CLIENT_ID}",
+      "clientSecret": "${QCLAW_DINGTALK_CLIENT_SECRET}"
+    },
+    "wecom": {
+      "enabled": false,
+      "allowFrom": [
+        "*"
+      ],
+      "botId": "${QCLAW_WECOM_BOT_ID}",
+      "secret": "${QCLAW_WECOM_SECRET}"
+    },
+    "weixin": {
+      "enabled": false
     }
   },
   "plugins": {
     "enabled": true,
-    "allow": [],
+    "allow": [
+      "wechat-access",
+      "content-plugin",
+      "tool-sandbox",
+      "qmemory",
+      "openclaw-qqbot",
+      "feishu",
+      "dingtalk-connector",
+      "wecom-openclaw-plugin",
+      "openclaw-weixin",
+      "pcmgr-ai-security"
+    ],
     "load": {
       "paths": []
     },
     "entries": {
       "wechat-access": {
-        "enabled": false
+        "enabled": true
+      },
+      "content-plugin": {
+        "enabled": true,
+        "config": {
+          "token": ""
+        }
+      },
+      "qmemory": {
+        "enabled": true,
+        "config": {}
+      },
+      "tool-sandbox": {
+        "enabled": true,
+        "config": {}
+      },
+      "openclaw-qqbot": {
+        "enabled": false,
+        "config": {}
+      },
+      "feishu": {
+        "enabled": false,
+        "config": {}
+      },
+      "dingtalk-connector": {
+        "enabled": false,
+        "config": {}
+      },
+      "wecom-openclaw-plugin": {
+        "enabled": false,
+        "config": {}
+      },
+      "openclaw-weixin": {
+        "enabled": false,
+        "config": {}
+      },
+      "pcmgr-ai-security": {
+        "enabled": true,
+        "config": {
+          "appId": "",
+          "softid": 1
+        }
       }
     }
+  },
+  "messages": {
+    "queue": {
+      "mode": "followup"
+    }
+  },
+  "session": {
+    "reset": {
+      "mode": "idle",
+      "idleMinutes": 525600
+    },
+    "maintenance": {
+      "pruneAfter": "365d",
+      "maxEntries": 1000000,
+      "resetArchiveRetention": false,
+      "rotateBytes": "1gb"
+    },
+    "dmScope": "per-channel-peer"
   }
 }

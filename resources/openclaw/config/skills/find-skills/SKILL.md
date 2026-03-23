@@ -1,6 +1,6 @@
 ---
 name: find-skills
-description: Helps users discover and install agent skills when they ask questions like "how do I do X", "find a skill for X", "is there a skill that can...", or express interest in extending capabilities. This skill should be used when the user is looking for functionality that might exist as an installable skill.
+description: 帮助用户发现和安装 Agent 技能。当用户提出类似"我怎么做 X"、"找一个能做 X 的技能"、"有没有可以……的技能"等问题，或表达出扩展功能的需求时触发。当用户寻找的功能可能以可安装技能的形式存在时，应使用此技能。
 metadata:
   openclaw:
     emoji: "🔍"

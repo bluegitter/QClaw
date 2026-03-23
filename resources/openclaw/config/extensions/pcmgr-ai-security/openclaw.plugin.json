@@ -1,0 +1,49 @@
+{
+  "id": "pcmgr-ai-security",
+  "name": "PCMgr AI Security",
+  "description": "电脑管家 AI 安全插件 - 提供 Prompt 安全检测、工具调用审计、Skill 加载审计和脚本写入审计能力。",
+  "configSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "appId": {
+        "type": "string",
+        "description": "Application scenario, used to identify the business context of the current call."
+      },
+      "stateDir": {
+        "type": "string",
+        "description": "The state directory for the plugin. If not provided, it defaults to the runtime resolved state directory."
+      },
+      "logRecord": {
+        "type": "boolean",
+        "description": "Whether to enable log recording.",
+        "default": false
+      },
+      "failureThreshold": {
+        "type": "integer",
+        "description": "The number of consecutive failures before triggering circuit-breaker. Default is 3.",
+        "default": 3
+      },
+      "cooldownSeconds": {
+        "type": "integer",
+        "description": "Duration in seconds the circuit-breaker stays open before auto-recovery. Default is 120 (2 minutes).",
+        "default": 120
+      },
+      "timeoutMs": {
+        "type": "integer",
+        "description": "Request timeout in milliseconds for the moderation API. Default is 30000.",
+        "default": 30000
+      },
+      "softid": {
+        "type": "integer",
+        "description": "Software source identifier, used in audit log reporting to the local PCMgr HTTP server. Default is 1.",
+        "default": 1
+      },
+      "auditReportUrl": {
+        "type": "string",
+        "description": "External HTTP endpoint URL for audit log reporting. Empty or omitted means no external reporting.",
+        "default": ""
+      }
+    }
+  }
+}
