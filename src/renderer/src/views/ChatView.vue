@@ -338,6 +338,63 @@ import InviteCodeModal from './chat/components/InviteCodeModal.vue'
 import ChatMessageList from './chat/components/ChatMessageList.vue'
 import ChatSidebar from './chat/components/ChatSidebar.vue'
 import ChatTopbar from './chat/components/ChatTopbar.vue'
+
+const CHAT_DEBUG_ENABLED = true
+
+function truncateChatDebugText(value: unknown, limit = 300) {
+  if (typeof value !== 'string') {
+    return value
+  }
+
+  if (value.length <= limit) {
+    return value
+  }
+
+  return `${value.slice(0, limit)}...(len=${value.length})`
+}
+
+function debugChatLog(label: string, payload?: Record<string, unknown>) {
+  if (!CHAT_DEBUG_ENABLED) {
+    return
+  }
+
+  if (payload) {
+    console.log('[ChatDebug]', label, payload)
+    return
+  }
+
+  console.log('[ChatDebug]', label)
+}
+
+function normalizeAssistantErrorMessage(error: unknown) {
+  const rawMessage =
+    typeof error === 'string'
+      ? error
+      : error instanceof Error
+        ? error.message
+        : typeof error === 'object' && error && 'message' in error
+          ? String((error as { message?: unknown }).message || '')
+          : ''
+
+  const normalizedMessage = rawMessage
+    .replace(/^[\s❌⚠️!！]+/g, '')
+    .replace(/^error:\s*/i, '')
+    .trim()
+
+  if (!normalizedMessage) {
+    return '发送失败，请稍后重试。'
+  }
+
+  if (
+    /(rate limit|too many requests|quota exceeded|exceeded current quota|request limit|429)/i.test(
+      normalizedMessage,
+    )
+  ) {
+    return '当前模型接口触发限流，请稍后重试，或更换模型/服务商。'
+  }
+
+  return normalizedMessage
+}
 import RemoteControlModal from './chat/components/RemoteControlModal.vue'
 import SystemSettingsModal from './chat/components/SystemSettingsModal.vue'
 import type {
@@ -373,6 +430,8 @@ const gatewayStatus = ref<GatewayStatus>(GATEWAY_STATUS.DISCONNECTED)
 const gatewayClient = ref<OpenClawGatewayClient | null>(null)
 const activeAssistantMessage = ref<ChatMessage | null>(null)
 const activeRunId = ref<string | null>(null)
+const activeStreamSessionKey = ref('')
+const activeRunReceivedThinking = ref(false)
 const isCreatingChat = ref(false)
 const isConnectingGateway = ref(false)
 const activeToolStatusMessages = new Map<string, true>()
@@ -380,6 +439,8 @@ const sessionLabelCache = new Map<string, string>()
 const sessionLabelPendingKeys = new Set<string>()
 const sessionAgentNameCache = new Map<string, string>()
 let gatewayReconnectTimer: number | null = null
+let thinkingHistoryPollTimer: number | null = null
+let thinkingHistoryPollInFlight = false
 const auth = useAuth()
 const inviteModalVisible = ref(false)
 const inviteUserId = ref<string | number>('')
@@ -521,6 +582,7 @@ const usageStats = computed(() => ({
   userMessageCount: messages.value.filter((message) => message.role === 'user').length,
   gatewayStatus: systemSettingsGatewayLabel.value,
 }))
+const reasoningStreamSessionKeys = new Set<string>()
 const remoteChannelCards = computed(() => [
   {
     id: 'wechat',
@@ -644,6 +706,13 @@ function clearGatewayReconnectTimer() {
   }
 }
 
+function clearThinkingHistoryPollTimer() {
+  if (thinkingHistoryPollTimer !== null) {
+    window.clearTimeout(thinkingHistoryPollTimer)
+    thinkingHistoryPollTimer = null
+  }
+}
+
 function scheduleGatewayReconnect(delay = 1500) {
   if (gatewayReconnectTimer !== null || isConnectingGateway.value) {
     return
@@ -656,8 +725,12 @@ function scheduleGatewayReconnect(delay = 1500) {
 }
 
 function resetActiveStreamingState() {
+  clearThinkingHistoryPollTimer()
+  thinkingHistoryPollInFlight = false
   activeAssistantMessage.value = null
   activeRunId.value = null
+  activeStreamSessionKey.value = ''
+  activeRunReceivedThinking.value = false
   activeToolStatusMessages.clear()
 }
 
@@ -668,6 +741,27 @@ function buildToolMessageKey(toolCard: ToolCard) {
 
   const argsSignature = toolCard.args ? JSON.stringify(toolCard.args) : ''
   return `${toolCard.kind}:${toolCard.name}:${toolCard.detail || ''}:${argsSignature}`
+}
+
+function cloneToolCard(toolCard: ToolCard): ToolCard {
+  return {
+    ...toolCard,
+    args: toolCard.args ? { ...toolCard.args } : toolCard.args,
+  }
+}
+
+function buildToolCardsSignature(toolCards?: ToolCard[]) {
+  return JSON.stringify(
+    (toolCards || []).map((toolCard) => ({
+      key: buildToolMessageKey(toolCard),
+      kind: toolCard.kind,
+      name: toolCard.name,
+      detail: toolCard.detail || '',
+      text: toolCard.text || '',
+      completed: !!toolCard.completed,
+      aborted: !!toolCard.aborted,
+    })),
+  )
 }
 
 function ensureAssistantThinkingLog(message: ChatMessage) {
@@ -695,6 +789,15 @@ function appendThinkingText(message: ChatMessage, text: string) {
   })
 }
 
+function upsertThinkingStreamText(message: ChatMessage, text: string) {
+  const mergedThinkingText = mergeStreamingText(message.thinkingText || '', text)
+  if (!mergedThinkingText) {
+    return
+  }
+
+  message.thinkingText = mergedThinkingText
+}
+
 function ensureToolThinkingEntry(message: ChatMessage, toolCard: ToolCard) {
   const thinkingLog = ensureAssistantThinkingLog(message)
   const toolCallId = buildToolMessageKey(toolCard)
@@ -710,6 +813,7 @@ function createStreamingAssistantPlaceholder() {
   const nextMessage = buildDisplayMessage('assistant', '')
   nextMessage.isStreaming = true
   nextMessage.thinkingState = 'pending'
+  nextMessage.thinkingText = ''
   nextMessage.thinkingLog = []
   nextMessage.toolCards = []
   messages.value.push(nextMessage)
@@ -723,7 +827,6 @@ function promoteThinkingMessageToReceived() {
   }
 
   activeAssistantMessage.value.thinkingState = 'running'
-  appendThinkingText(activeAssistantMessage.value, '我已收到你的请求，请稍后。')
 }
 
 function discardThinkingStatusMessage() {
@@ -819,6 +922,241 @@ function upsertToolStreamCard(event: {
   upsertStreamingToolCards([nextToolCard])
 }
 
+async function ensureReasoningStreamEnabled(sessionKey: string) {
+  const client = gatewayClient.value
+  if (!client || gatewayStatus.value !== CONNECTED_STATUS || !sessionKey) {
+    debugChatLog('ensure-reasoning-skip', {
+      sessionKey,
+      hasClient: !!client,
+      gatewayStatus: gatewayStatus.value,
+    })
+    return
+  }
+
+  if (reasoningStreamSessionKeys.has(sessionKey)) {
+    debugChatLog('ensure-reasoning-hit-cache', {
+      sessionKey,
+    })
+    return
+  }
+
+  debugChatLog('ensure-reasoning-start', {
+    sessionKey,
+  })
+  await client.patchSession(sessionKey, {
+    reasoningLevel: 'stream',
+  })
+  reasoningStreamSessionKeys.add(sessionKey)
+  debugChatLog('ensure-reasoning-success', {
+    sessionKey,
+  })
+}
+
+function moveSessionCaches(previousSessionKey: string, nextSessionKey: string) {
+  if (!previousSessionKey || previousSessionKey === nextSessionKey) {
+    return
+  }
+
+  if (sessionLabelCache.has(previousSessionKey) && !sessionLabelCache.has(nextSessionKey)) {
+    sessionLabelCache.set(nextSessionKey, sessionLabelCache.get(previousSessionKey) || '新对话')
+  }
+
+  if (sessionAgentNameCache.has(previousSessionKey) && !sessionAgentNameCache.has(nextSessionKey)) {
+    sessionAgentNameCache.set(nextSessionKey, sessionAgentNameCache.get(previousSessionKey) || '')
+  }
+
+  if (reasoningStreamSessionKeys.has(previousSessionKey)) {
+    reasoningStreamSessionKeys.add(nextSessionKey)
+  }
+}
+
+function syncStreamingSessionKey(nextSessionKey: string) {
+  if (!nextSessionKey) {
+    return
+  }
+
+  const previousSessionKey = currentSessionKey.value
+  if (nextSessionKey === previousSessionKey && nextSessionKey === activeStreamSessionKey.value) {
+    return
+  }
+
+  moveSessionCaches(previousSessionKey, nextSessionKey)
+  moveSessionCaches(activeStreamSessionKey.value, nextSessionKey)
+
+  const previousIndex = sessions.value.findIndex((session) => session.key === previousSessionKey)
+  const nextIndex = sessions.value.findIndex((session) => session.key === nextSessionKey)
+
+  if (previousIndex >= 0 && nextIndex < 0) {
+    sessions.value[previousIndex] = {
+      ...sessions.value[previousIndex],
+      key: nextSessionKey,
+      updatedAt: Date.now(),
+    }
+  } else if (nextIndex < 0) {
+    sessions.value.unshift({
+      key: nextSessionKey,
+      label: sessionLabelCache.get(nextSessionKey) || sessionLabelCache.get(previousSessionKey) || '新对话',
+      updatedAt: Date.now(),
+    })
+  }
+
+  currentSessionKey.value = nextSessionKey
+  activeStreamSessionKey.value = nextSessionKey
+  debugChatLog('stream-session-synced', {
+    previousSessionKey,
+    nextSessionKey,
+  })
+}
+
+function extractThinkingTextFromMessageContent(message: any) {
+  if (!Array.isArray(message?.content)) {
+    return ''
+  }
+
+  return message.content
+    .map((item: any) => {
+      if (!item || typeof item !== 'object') {
+        return ''
+      }
+
+      if (String(item.type || '').toLowerCase() !== 'thinking') {
+        return ''
+      }
+
+      if (typeof item.thinking === 'string') {
+        return item.thinking
+      }
+
+      if (typeof item.content === 'string') {
+        return item.content
+      }
+
+      if (typeof item.summary === 'string') {
+        return item.summary
+      }
+
+      return ''
+    })
+    .filter(Boolean)
+    .join('\n')
+}
+
+function applyThinkingFromHistory(messagesFromHistory: any[]) {
+  const targetMessage = activeAssistantMessage.value
+  if (!targetMessage) {
+    return false
+  }
+
+  const historyMessages = toDisplayMessages(messagesFromHistory)
+  let lastUserIndex = -1
+  for (let index = historyMessages.length - 1; index >= 0; index -= 1) {
+    if (historyMessages[index]?.role === 'user') {
+      lastUserIndex = index
+      break
+    }
+  }
+
+  const pendingAssistantMessages =
+    lastUserIndex >= 0 ? historyMessages.slice(lastUserIndex + 1) : historyMessages
+
+  const nextToolCards: ToolCard[] = []
+  for (const message of pendingAssistantMessages) {
+    if (!Array.isArray(message.toolCards) || message.toolCards.length === 0) {
+      continue
+    }
+
+    for (const toolCard of message.toolCards) {
+      nextToolCards.push(cloneToolCard(toolCard))
+    }
+  }
+
+  if (nextToolCards.length === 0) {
+    return false
+  }
+
+  const previousToolCardsSignature = buildToolCardsSignature(targetMessage.toolCards)
+  const previousThinkingLogLength = targetMessage.thinkingLog?.length || 0
+
+  promoteThinkingMessageToReceived()
+  upsertStreamingToolCards(nextToolCards)
+
+  const nextToolCardsSignature = buildToolCardsSignature(targetMessage.toolCards)
+  const nextThinkingLogLength = targetMessage.thinkingLog?.length || 0
+  const didChange =
+    previousToolCardsSignature !== nextToolCardsSignature ||
+    previousThinkingLogLength !== nextThinkingLogLength
+
+  if (didChange) {
+    debugChatLog('tool-timeline-updated-from-history', {
+      sessionKey: activeStreamSessionKey.value || currentSessionKey.value,
+      toolCardCount: targetMessage.toolCards?.length || 0,
+      thinkingLogLength: nextThinkingLogLength,
+      preview: (targetMessage.toolCards || [])
+        .slice(-3)
+        .map((toolCard) => formatToolStatusText(toolCard))
+        .join(' | '),
+    })
+  }
+
+  return didChange
+}
+
+function scheduleThinkingHistoryPolling(delay = 800) {
+  clearThinkingHistoryPollTimer()
+
+  thinkingHistoryPollTimer = window.setTimeout(async () => {
+    thinkingHistoryPollTimer = null
+
+    if (thinkingHistoryPollInFlight) {
+      scheduleThinkingHistoryPolling(800)
+      return
+    }
+
+    const client = gatewayClient.value
+    const sessionKey = activeStreamSessionKey.value || currentSessionKey.value
+    if (
+      !client ||
+      gatewayStatus.value !== CONNECTED_STATUS ||
+      !isSending.value ||
+      !activeAssistantMessage.value ||
+      !sessionKey
+    ) {
+      return
+    }
+
+    thinkingHistoryPollInFlight = true
+    let shouldContinuePolling = false
+    let nextDelay = 900
+
+    try {
+      const history = await client.getChatHistory({
+        sessionKey,
+        limit: 200,
+      })
+
+      const didChange = applyThinkingFromHistory(history?.messages ?? [])
+      if (didChange) {
+        scrollMessagesToBottom()
+        nextDelay = 350
+      }
+
+      shouldContinuePolling = isSending.value && !!activeAssistantMessage.value
+    } catch (error) {
+      debugChatLog('tool-timeline-history-poll-failed', {
+        sessionKey,
+        error: error instanceof Error ? error.message : String(error),
+      })
+      shouldContinuePolling = isSending.value && !!activeAssistantMessage.value
+      nextDelay = 1200
+    } finally {
+      thinkingHistoryPollInFlight = false
+      if (shouldContinuePolling) {
+        scheduleThinkingHistoryPolling(nextDelay)
+      }
+    }
+  }, delay)
+}
+
 async function loadChatHistory() {
   const client = gatewayClient.value
   if (!client || gatewayStatus.value !== CONNECTED_STATUS || !currentSessionKey.value) {
@@ -889,13 +1227,47 @@ function handleGatewayMessage(event: {
   toolStreamPhase?: string
   role?: string
 }) {
-  if (event.sessionKey && event.sessionKey !== currentSessionKey.value) {
+  debugChatLog('gateway-event', {
+    state: event.state,
+    runId: event.runId,
+    sessionKey: event.sessionKey,
+    role: event.role,
+    textLength: event.text?.length || 0,
+    deltaLength: event.delta?.length || 0,
+    toolCallId: event.toolCallId,
+    toolName: event.toolName,
+    toolStreamPhase: event.toolStreamPhase,
+    hasMessage: !!event.message,
+    preview: truncateChatDebugText(event.text || event.delta || '', 240),
+    currentSessionKey: currentSessionKey.value,
+    activeRunId: activeRunId.value,
+  })
+
+  const isCurrentActiveRun =
+    !!activeRunId.value && !!event.runId && activeRunId.value === event.runId
+
+  const canAdoptStreamingSession =
+    !!event.sessionKey &&
+    event.sessionKey !== currentSessionKey.value &&
+    (isCurrentActiveRun || (!!activeAssistantMessage.value && !activeRunId.value && isSending.value))
+
+  if (canAdoptStreamingSession && event.sessionKey) {
+    syncStreamingSessionKey(event.sessionKey)
+  }
+
+  if (event.sessionKey && event.sessionKey !== currentSessionKey.value && !isCurrentActiveRun) {
+    debugChatLog('gateway-event-ignored-session-mismatch', {
+      eventSessionKey: event.sessionKey,
+      currentSessionKey: currentSessionKey.value,
+    })
     return
   }
 
   if (event.error) {
     discardThinkingStatusMessage()
-    messages.value.push(buildDisplayMessage('assistant', `❌ ${event.text || '发送失败'}`))
+    messages.value.push(
+      buildDisplayMessage('assistant', `❌ ${normalizeAssistantErrorMessage(event.text)}`),
+    )
     isSending.value = false
     resetActiveStreamingState()
     scrollMessagesToBottom()
@@ -920,6 +1292,32 @@ function handleGatewayMessage(event: {
 
   if (!activeRunId.value && event.runId) {
     activeRunId.value = event.runId ?? null
+  }
+
+  if (event.state === 'thinking') {
+    activeRunReceivedThinking.value = true
+    clearThinkingHistoryPollTimer()
+
+    if (!activeAssistantMessage.value) {
+      createStreamingAssistantPlaceholder()
+      debugChatLog('thinking-created-placeholder', {
+        runId: event.runId,
+      })
+    }
+
+    if (activeAssistantMessage.value) {
+      activeAssistantMessage.value.thinkingState = 'running'
+      upsertThinkingStreamText(activeAssistantMessage.value, event.text || event.delta || '')
+      debugChatLog('thinking-updated', {
+        runId: event.runId,
+        thinkingTextLength: activeAssistantMessage.value.thinkingText?.length || 0,
+        thinkingLogLength: activeAssistantMessage.value.thinkingLog?.length || 0,
+        preview: truncateChatDebugText(activeAssistantMessage.value.thinkingText || '', 240),
+      })
+    }
+
+    scrollMessagesToBottom()
+    return
   }
 
   const nextToolCards = event.message
@@ -1030,8 +1428,17 @@ async function connectGateway() {
     await refreshSessions()
 
     if (sessions.value.length > 0) {
-      currentSessionKey.value = sessions.value[0]?.key ?? currentSessionKey.value
-      await loadChatHistory()
+      const hasCurrentSession =
+        !!currentSessionKey.value &&
+        sessions.value.some((session) => session.key === currentSessionKey.value)
+
+      if (!currentSessionKey.value) {
+        currentSessionKey.value = sessions.value[0]?.key ?? currentSessionKey.value
+      }
+
+      if (hasCurrentSession || !currentSessionKey.value || sessions.value.some((session) => session.key === currentSessionKey.value)) {
+        await loadChatHistory()
+      }
     } else {
       startNewChat()
     }
@@ -1573,6 +1980,7 @@ async function deleteChatSession(sessionKey: string) {
     sessionLabelCache.delete(sessionKey)
     sessionLabelPendingKeys.delete(sessionKey)
     sessionAgentNameCache.delete(sessionKey)
+    reasoningStreamSessionKeys.delete(sessionKey)
 
     await refreshSessions()
 
@@ -1612,6 +2020,10 @@ function toggleSidebar() {
 async function sendMessage() {
   const content = draftText.value.trim()
   if (!content || isSending.value) {
+    debugChatLog('send-skip', {
+      hasContent: !!content,
+      isSending: isSending.value,
+    })
     return
   }
 
@@ -1657,9 +2069,48 @@ async function sendMessage() {
   isSending.value = true
 
   try {
+    activeStreamSessionKey.value = currentSessionKey.value
+    activeRunReceivedThinking.value = false
+
+    debugChatLog('send-start', {
+      sessionKey: currentSessionKey.value,
+      contentPreview: truncateChatDebugText(content, 240),
+      userMessageCount: messages.value.filter((message) => message.role === 'user').length,
+      isFirstUserMessage,
+    })
+
+    let reasoningStreamEnabled = false
+
+    try {
+      await ensureReasoningStreamEnabled(currentSessionKey.value)
+      reasoningStreamEnabled = true
+    } catch (error) {
+      debugChatLog('ensure-reasoning-failed-before-send', {
+        sessionKey: currentSessionKey.value,
+        error: error instanceof Error ? error.message : String(error),
+      })
+      console.warn('[Chat] 启用 reasoning stream 失败:', error)
+    }
+
     await client.sendChatMessage(content, {
       sessionKey: currentSessionKey.value,
     })
+    debugChatLog('send-dispatched', {
+      sessionKey: currentSessionKey.value,
+      reasoningStreamEnabled,
+    })
+    scheduleThinkingHistoryPolling(1000)
+
+    if (!reasoningStreamEnabled) {
+      void ensureReasoningStreamEnabled(currentSessionKey.value).catch((error) => {
+        debugChatLog('ensure-reasoning-failed-after-send', {
+          sessionKey: currentSessionKey.value,
+          error: error instanceof Error ? error.message : String(error),
+        })
+        console.warn('[Chat] 发送后重试启用 reasoning stream 失败:', error)
+      })
+    }
+
     promoteThinkingMessageToReceived()
 
     if (isFirstUserMessage) {
@@ -1679,7 +2130,7 @@ async function sendMessage() {
     messages.value.push(
       buildDisplayMessage(
         'assistant',
-        `❌ 发送失败: ${error instanceof Error ? error.message : '未知错误'}`,
+        `❌ ${normalizeAssistantErrorMessage(error)}`,
       ),
     )
     isSending.value = false
@@ -1722,9 +2173,22 @@ onMounted(() => {
 onBeforeUnmount(() => {
   document.removeEventListener('pointerdown', handleDocumentPointerDown)
   clearGatewayReconnectTimer()
+  clearThinkingHistoryPollTimer()
   clearRemoteTimers()
   detachWxLoginMessageListener()
   resetToolCardCopyMessage()
   gatewayClient.value?.disconnect()
 })
+
+if ((import.meta as any).hot) {
+  ;(import.meta as any).hot.dispose(() => {
+    document.removeEventListener('pointerdown', handleDocumentPointerDown)
+    clearGatewayReconnectTimer()
+    clearThinkingHistoryPollTimer()
+    clearRemoteTimers()
+    detachWxLoginMessageListener()
+    resetToolCardCopyMessage()
+    gatewayClient.value?.disconnect()
+  })
+}
 </script>
