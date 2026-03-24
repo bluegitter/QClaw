@@ -8,6 +8,7 @@ export const GATEWAY_STATUS = {
 export type GatewayStatus = (typeof GATEWAY_STATUS)[keyof typeof GATEWAY_STATUS]
 
 type PendingRequest = {
+  method: string
   resolve: (value: any) => void
   reject: (reason?: unknown) => void
   timer: number
@@ -86,6 +87,46 @@ const DEVICE_IDENTITY_STORAGE_KEY = 'openclaw.device.identity.v1'
 const DEVICE_AUTH_STORAGE_KEY = 'openclaw.device.auth.v1'
 const CONNECT_ROLE = 'operator'
 const CONNECT_SCOPES = ['operator.admin', 'operator.approvals', 'operator.pairing']
+const GATEWAY_DEBUG_ENABLED = true
+const GATEWAY_DEBUGGED_METHODS = new Set(['chat.send', 'sessions.patch'])
+
+function truncateDebugText(value: unknown, limit = 400) {
+  if (typeof value !== 'string') {
+    return value
+  }
+
+  if (value.length <= limit) {
+    return value
+  }
+
+  return `${value.slice(0, limit)}...(len=${value.length})`
+}
+
+function getMessageContentTypes(message: any) {
+  if (!Array.isArray(message?.content)) {
+    return []
+  }
+
+  return message.content.map((item) => String(item?.type || 'unknown'))
+}
+
+function debugGatewayLog(label: string, payload?: Record<string, unknown>) {
+  if (!GATEWAY_DEBUG_ENABLED) {
+    return
+  }
+
+  if (payload) {
+    console.log('[GatewayDebug]', label, payload)
+    return
+  }
+
+  console.log('[GatewayDebug]', label)
+}
+
+function shouldLogGatewayEvent(eventName: unknown) {
+  const normalized = String(eventName || '')
+  return normalized === 'agent' || normalized === 'chat'
+}
 
 function createRequestId() {
   if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
@@ -352,6 +393,11 @@ function extractMessageText(message: any) {
         return ''
       }
 
+      const itemType = String(item.type || '').toLowerCase()
+      if (itemType === 'thinking') {
+        return ''
+      }
+
       if (typeof item.text === 'string') {
         return item.text
       }
@@ -364,6 +410,75 @@ function extractMessageText(message: any) {
     })
     .filter(Boolean)
     .join('\n')
+}
+
+function extractThinkingText(input: any) {
+  if (!input || typeof input !== 'object') {
+    return ''
+  }
+
+  if (typeof input.thinking === 'string' && input.thinking.trim()) {
+    return input.thinking
+  }
+
+  if (typeof input.summary === 'string' && input.summary.trim()) {
+    return input.summary
+  }
+
+  if (String(input.type || '').toLowerCase() === 'thinking') {
+    if (typeof input.content === 'string' && input.content.trim()) {
+      return input.content
+    }
+
+    if (typeof input.text === 'string' && input.text.trim()) {
+      return input.text
+    }
+  }
+
+  if (!Array.isArray(input.content)) {
+    return ''
+  }
+
+  return input.content
+    .map((item: any) => {
+      if (!item || typeof item !== 'object') {
+        return ''
+      }
+
+      const itemType = String(item.type || '').toLowerCase()
+      if (itemType !== 'thinking') {
+        return ''
+      }
+
+      if (typeof item.thinking === 'string') {
+        return item.thinking
+      }
+
+      if (typeof item.summary === 'string') {
+        return item.summary
+      }
+
+      if (typeof item.content === 'string') {
+        return item.content
+      }
+
+      if (typeof item.text === 'string') {
+        return item.text
+      }
+
+      return ''
+    })
+    .filter(Boolean)
+    .join('\n')
+}
+
+function extractThinkingStreamText(data: Record<string, any>, message?: any) {
+  return (
+    extractThinkingText(data) ||
+    (typeof data.text === 'string' ? data.text : '') ||
+    (typeof data.delta === 'string' ? data.delta : '') ||
+    extractThinkingText(message)
+  )
 }
 
 export class OpenClawGatewayClient {
@@ -711,6 +826,20 @@ export class OpenClawGatewayClient {
       return
     }
 
+    if ((message.type === 'event' || message.event) && shouldLogGatewayEvent(message.event)) {
+      debugGatewayLog('ws-event', {
+        event: message.event,
+        type: message.type,
+        state: message.payload?.state,
+        stream: message.payload?.stream,
+        runId: message.payload?.runId,
+        sessionKey: message.payload?.sessionKey,
+        dataKeys: Object.keys(message.payload?.data || {}),
+        messageContentTypes: getMessageContentTypes(message.payload?.message),
+        rawPreview: truncateDebugText(raw, 1200),
+      })
+    }
+
     if (message.type === 'event' || message.event) {
       this.handleEvent(message)
       return
@@ -739,12 +868,129 @@ export class OpenClawGatewayClient {
       const stream = payload.stream
       const data = payload.data || {}
 
+      if (stream === 'thinking') {
+        const text = extractThinkingStreamText(data, payload.message)
+        const delta = typeof data.delta === 'string' ? data.delta : text
+
+        debugGatewayLog('emit-thinking', {
+          source: 'agent.thinking',
+          runId: payload.runId,
+          sessionKey: payload.sessionKey,
+          textLength: text.length,
+          deltaLength: delta.length,
+          preview: truncateDebugText(text || delta, 300),
+          dataKeys: Object.keys(data),
+          messageContentTypes: getMessageContentTypes(payload.message),
+        })
+
+        this.onMessage({
+          runId: payload.runId,
+          sessionKey: payload.sessionKey,
+          state: 'thinking',
+          text,
+          delta,
+          role: 'assistant',
+          message: {
+            role: 'assistant',
+            text,
+          },
+        })
+        return
+      }
+
+      if (stream === 'assistant') {
+        const thinkingText = extractThinkingText(data) || extractThinkingText(payload.message)
+        debugGatewayLog('agent-assistant-parsed', {
+          runId: payload.runId,
+          sessionKey: payload.sessionKey,
+          thinkingLength: thinkingText.length,
+          textLength:
+            (
+              extractMessageText(data) ||
+              extractMessageText(payload.message) ||
+              (typeof data.text === 'string'
+                ? data.text
+                : typeof data.delta === 'string'
+                  ? data.delta
+                  : '')
+            ).length,
+          dataKeys: Object.keys(data),
+          messageContentTypes: getMessageContentTypes(payload.message),
+          thinkingPreview: truncateDebugText(thinkingText, 300),
+        })
+
+        if (thinkingText) {
+          this.onMessage({
+            runId: payload.runId,
+            sessionKey: payload.sessionKey,
+            state: 'thinking',
+            text: thinkingText,
+            delta: thinkingText,
+            role: 'assistant',
+            message: {
+              role: 'assistant',
+              content: [
+                {
+                  type: 'thinking',
+                  thinking: thinkingText,
+                },
+              ],
+            },
+          })
+        }
+
+        const text =
+          extractMessageText(data) ||
+          extractMessageText(payload.message) ||
+          (typeof data.text === 'string'
+            ? data.text
+            : typeof data.delta === 'string'
+              ? data.delta
+              : '')
+        const delta = typeof data.delta === 'string' ? data.delta : text
+
+        if (text) {
+          debugGatewayLog('emit-delta', {
+            source: 'agent.assistant',
+            runId: payload.runId,
+            sessionKey: payload.sessionKey,
+            textLength: text.length,
+            deltaLength: delta.length,
+            preview: truncateDebugText(text || delta, 300),
+          })
+
+          this.onMessage({
+            runId: payload.runId,
+            sessionKey: payload.sessionKey,
+            state: 'delta',
+            text,
+            delta,
+            role: 'assistant',
+            message: {
+              role: 'assistant',
+              text,
+            },
+          })
+        }
+        return
+      }
+
       if (stream === 'tool') {
         const toolCallId = data.toolCallId || data.tool_call_id
         const toolName = data.name || data.toolName || data.tool_name
         const toolArgs = data.args || data.toolArgs || data.tool_args
         const toolOutput = data.result || data.text || data.toolOutput || data.tool_output
         const phase = data.phase || data.toolStreamPhase
+
+        debugGatewayLog('emit-tool-stream', {
+          runId: payload.runId,
+          sessionKey: payload.sessionKey,
+          toolCallId,
+          toolName,
+          phase,
+          hasOutput: !!toolOutput,
+          outputPreview: truncateDebugText(toolOutput, 300),
+        })
 
         this.onMessage({
           runId: payload.runId,
@@ -782,6 +1028,32 @@ export class OpenClawGatewayClient {
             ],
           },
         })
+        return
+      }
+
+      if (stream === 'lifecycle' && data.phase === 'error') {
+        debugGatewayLog('emit-error', {
+          source: 'agent.lifecycle',
+          runId: payload.runId,
+          sessionKey: payload.sessionKey,
+          error: truncateDebugText(
+            (typeof data.error === 'string' && data.error) ||
+              (typeof data.message === 'string' && data.message) ||
+              '发生错误',
+            300,
+          ),
+        })
+
+        this.onMessage({
+          runId: payload.runId,
+          sessionKey: payload.sessionKey,
+          state: 'error',
+          text:
+            (typeof data.error === 'string' && data.error) ||
+            (typeof data.message === 'string' && data.message) ||
+            '发生错误',
+          error: true,
+        })
       }
 
       return
@@ -792,6 +1064,13 @@ export class OpenClawGatewayClient {
     }
 
     if (payload.state === 'error') {
+      debugGatewayLog('emit-error', {
+        source: 'chat.error',
+        runId: payload.runId,
+        sessionKey: payload.sessionKey,
+        error: truncateDebugText(payload.errorMessage || '发生错误', 300),
+      })
+
       this.onMessage({
         runId: payload.runId,
         sessionKey: payload.sessionKey,
@@ -803,6 +1082,11 @@ export class OpenClawGatewayClient {
     }
 
     if (payload.state === 'aborted') {
+      debugGatewayLog('emit-aborted', {
+        runId: payload.runId,
+        sessionKey: payload.sessionKey,
+      })
+
       this.onMessage({
         runId: payload.runId,
         sessionKey: payload.sessionKey,
@@ -841,6 +1125,17 @@ export class OpenClawGatewayClient {
         })
       }
 
+      debugGatewayLog('emit-tool-stream', {
+        source: 'chat.tool_stream',
+        runId: payload.runId,
+        sessionKey: payload.sessionKey,
+        toolCallId,
+        toolName,
+        phase: payload.toolStreamPhase,
+        hasOutput: !!toolOutput,
+        outputPreview: truncateDebugText(toolOutput, 300),
+      })
+
       this.onMessage({
         runId: payload.runId,
         sessionKey: payload.sessionKey,
@@ -862,7 +1157,50 @@ export class OpenClawGatewayClient {
       return
     }
 
+    const thinkingText = extractThinkingText(payload.message)
+    if (thinkingText) {
+      debugGatewayLog('emit-thinking', {
+        source: `chat.${payload.state || 'delta'}`,
+        runId: payload.runId,
+        sessionKey: payload.sessionKey,
+        textLength: thinkingText.length,
+        preview: truncateDebugText(thinkingText, 300),
+        messageContentTypes: getMessageContentTypes(payload.message),
+      })
+
+      this.onMessage({
+        runId: payload.runId,
+        sessionKey: payload.sessionKey,
+        state: 'thinking',
+        text: thinkingText,
+        delta: thinkingText,
+        role: 'assistant',
+        message: {
+          role: 'assistant',
+          content: [
+            {
+              type: 'thinking',
+              thinking: thinkingText,
+            },
+          ],
+        },
+      })
+
+      if (payload.state === 'thinking') {
+        return
+      }
+    }
+
     const text = extractMessageText(payload.message)
+    debugGatewayLog('emit-chat-message', {
+      source: `chat.${payload.state || 'delta'}`,
+      runId: payload.runId,
+      sessionKey: payload.sessionKey,
+      textLength: text.length,
+      deltaLength: typeof payload.delta === 'string' ? payload.delta.length : 0,
+      preview: truncateDebugText(text || payload.delta || '', 300),
+      messageContentTypes: getMessageContentTypes(payload.message),
+    })
     this.onMessage({
       runId: payload.runId,
       sessionKey: payload.sessionKey,
@@ -888,6 +1226,16 @@ export class OpenClawGatewayClient {
     this.pending.delete(response.id)
     window.clearTimeout(request.timer)
 
+    if (GATEWAY_DEBUGGED_METHODS.has(request.method)) {
+      debugGatewayLog('request-response', {
+        method: request.method,
+        ok: response.ok,
+        responseKeys: Object.keys(response.payload || {}),
+        error: response.error?.message,
+        payloadPreview: truncateDebugText(JSON.stringify(response.payload || {}), 500),
+      })
+    }
+
     if (response.ok) {
       request.resolve(response.payload)
       return
@@ -909,7 +1257,15 @@ export class OpenClawGatewayClient {
         reject(new Error('请求超时'))
       }, 30_000)
 
+      if (GATEWAY_DEBUGGED_METHODS.has(method)) {
+        debugGatewayLog('request-send', {
+          method,
+          paramsPreview: truncateDebugText(JSON.stringify(params), 600),
+        })
+      }
+
       this.pending.set(id, {
+        method,
         resolve,
         reject,
         timer,

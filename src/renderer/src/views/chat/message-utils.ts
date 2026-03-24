@@ -52,36 +52,237 @@ function escapeHtml(text: string) {
     .replaceAll("'", '&#39;')
 }
 
-function getPathLikeValue(toolArgs?: Record<string, any> | null) {
-  if (!toolArgs || typeof toolArgs !== 'object') {
+function normalizeThinkingText(text: string) {
+  const trimmed = text.trim()
+  if (!trimmed) {
     return ''
   }
 
-  const preferredKeys = [
+  const withoutPrefix = trimmed.startsWith('Reasoning:\n')
+    ? trimmed.slice('Reasoning:\n'.length)
+    : trimmed.startsWith('Reasoning:')
+      ? trimmed.slice('Reasoning:'.length)
+      : trimmed
+
+  return withoutPrefix
+    .split('\n')
+    .map((line) => {
+      const normalizedLine = line.trim()
+      if (normalizedLine.startsWith('_') && normalizedLine.endsWith('_') && normalizedLine.length > 1) {
+        return normalizedLine.slice(1, -1)
+      }
+      return line
+    })
+    .join('\n')
+    .trim()
+}
+
+function splitThinkingTimelineSteps(text: string) {
+  const normalized = normalizeThinkingText(text)
+  if (!normalized) {
+    return []
+  }
+
+  const steps: string[] = []
+  let buffer = ''
+
+  const flushBuffer = () => {
+    const next = buffer.trim()
+    if (!next) {
+      buffer = ''
+      return
+    }
+
+    if (steps.length > 0 && next.length <= 10) {
+      steps[steps.length - 1] = `${steps[steps.length - 1]}${next}`
+    } else {
+      steps.push(next)
+    }
+
+    buffer = ''
+  }
+
+  for (let index = 0; index < normalized.length; index += 1) {
+    const char = normalized[index]
+    buffer += char
+
+    if ('。！？!?；;'.includes(char)) {
+      flushBuffer()
+      continue
+    }
+
+    if (char === '\n' && normalized[index + 1] === '\n') {
+      flushBuffer()
+    }
+  }
+
+  flushBuffer()
+  return steps
+}
+
+function stripToolMarkup(text: string) {
+  return text
+    .replace(/<\/?arg_key>/gi, ' ')
+    .replace(/<\/?arg_value>/gi, ' ')
+    .replace(/<\/?[^>]+>/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+}
+
+function extractTaggedToolArgs(text: string) {
+  const taggedArgs: Record<string, string> = {}
+  const regex = /<arg_key>([\s\S]*?)<\/arg_key>\s*<arg_value>([\s\S]*?)<\/arg_value>/gi
+
+  for (const match of text.matchAll(regex)) {
+    const key = stripToolMarkup(match[1] || '').toLowerCase()
+    const value = stripToolMarkup(match[2] || '')
+    if (key && value && !taggedArgs[key]) {
+      taggedArgs[key] = value
+    }
+  }
+
+  return taggedArgs
+}
+
+function normalizeToolArgString(value: string) {
+  const trimmed = value.trim()
+  if (!trimmed) {
+    return ''
+  }
+
+  return stripToolMarkup(trimmed) || trimmed
+}
+
+function collectToolArgValues(toolArgs: unknown, result: Record<string, string>, depth = 0) {
+  if (depth > 3 || toolArgs == null) {
+    return
+  }
+
+  if (typeof toolArgs === 'string') {
+    const normalizedValue = normalizeToolArgString(toolArgs)
+    if (normalizedValue && !result.__first) {
+      result.__first = normalizedValue
+    }
+
+    const taggedArgs = extractTaggedToolArgs(toolArgs)
+    for (const [key, value] of Object.entries(taggedArgs)) {
+      if (value && !result[key]) {
+        result[key] = value
+      }
+    }
+    return
+  }
+
+  if (typeof toolArgs === 'number' || typeof toolArgs === 'boolean') {
+    const normalizedValue = String(toolArgs)
+    if (normalizedValue && !result.__first) {
+      result.__first = normalizedValue
+    }
+    return
+  }
+
+  if (Array.isArray(toolArgs)) {
+    for (const item of toolArgs) {
+      collectToolArgValues(item, result, depth + 1)
+    }
+    return
+  }
+
+  if (typeof toolArgs !== 'object') {
+    return
+  }
+
+  for (const [rawKey, value] of Object.entries(toolArgs)) {
+    const key = String(rawKey || '').toLowerCase()
+    if (!key) {
+      continue
+    }
+
+    if (typeof value === 'string') {
+      const normalizedValue = normalizeToolArgString(value)
+      if (normalizedValue) {
+        if (!result[key]) {
+          result[key] = normalizedValue
+        }
+        if (!result.__first) {
+          result.__first = normalizedValue
+        }
+      }
+
+      const taggedArgs = extractTaggedToolArgs(value)
+      for (const [taggedKey, taggedValue] of Object.entries(taggedArgs)) {
+        if (taggedValue && !result[taggedKey]) {
+          result[taggedKey] = taggedValue
+        }
+      }
+      continue
+    }
+
+    if (typeof value === 'number' || typeof value === 'boolean') {
+      const normalizedValue = String(value)
+      if (!result[key]) {
+        result[key] = normalizedValue
+      }
+      if (!result.__first) {
+        result.__first = normalizedValue
+      }
+      continue
+    }
+
+    collectToolArgValues(value, result, depth + 1)
+  }
+}
+
+function getToolArgValue(toolArgs: unknown, preferredKeys: string[]) {
+  const argMap: Record<string, string> = {}
+  collectToolArgValues(toolArgs, argMap)
+
+  for (const key of preferredKeys) {
+    const value = argMap[key.toLowerCase()]
+    if (value) {
+      return value
+    }
+  }
+
+  return argMap.__first || ''
+}
+
+function truncateToolDisplayText(value: string, limit = 60) {
+  const trimmed = value.trim()
+  if (!trimmed) {
+    return ''
+  }
+
+  return trimmed.length > limit ? `${trimmed.slice(0, limit)}...` : trimmed
+}
+
+function formatToolTargetLabel(value: string, limit = 60) {
+  const trimmed = value.trim()
+  if (!trimmed) {
+    return ''
+  }
+
+  try {
+    const parsed = new URL(trimmed)
+    const path = parsed.pathname && parsed.pathname !== '/' ? parsed.pathname : ''
+    const query = parsed.search && parsed.search !== '?' ? parsed.search : ''
+    return truncateToolDisplayText(`${parsed.host}${path}${query}`, limit)
+  } catch {
+    return truncateToolDisplayText(trimmed, limit)
+  }
+}
+
+function getPathLikeValue(toolArgs?: unknown) {
+  return getToolArgValue(toolArgs, [
     'path',
     'file',
-    'filePath',
     'filepath',
+    'file_path',
     'filename',
     'name',
     'target',
     'source',
-  ]
-
-  for (const key of preferredKeys) {
-    const value = toolArgs[key]
-    if (typeof value === 'string' && value.trim()) {
-      return value.trim()
-    }
-  }
-
-  for (const value of Object.values(toolArgs)) {
-    if (typeof value === 'string' && value.trim()) {
-      return value.trim()
-    }
-  }
-
-  return ''
+  ]).trim()
 }
 
 function getDisplayFileName(pathLike: string) {
@@ -95,13 +296,179 @@ function getDisplayFileName(pathLike: string) {
   return parts[parts.length - 1] || trimmed
 }
 
-function getCommandLikeValue(toolArgs?: Record<string, any> | null) {
-  if (!toolArgs || typeof toolArgs !== 'object') {
-    return ''
+function getCommandLikeValue(toolArgs?: unknown) {
+  return getToolArgValue(toolArgs, ['command', 'cmd']).trim()
+}
+
+function getBrowserActionKind(toolArgs?: unknown) {
+  return getToolArgValue(toolArgs, ['kind', 'event', 'gesture', 'interaction', 'mode']).toLowerCase()
+}
+
+function getBrowserActionTarget(toolArgs?: unknown) {
+  return getToolArgValue(toolArgs, [
+    'url',
+    'href',
+    'target',
+    'selector',
+    'element',
+    'locator',
+    'label',
+    'name',
+    'query',
+    'text',
+    'page',
+    'location',
+  ])
+}
+
+function getBrowserActionInput(toolArgs?: unknown) {
+  return getToolArgValue(toolArgs, ['value', 'input', 'content', 'text', 'keys', 'key'])
+}
+
+function getBrowserOperation(toolCard: ToolCard) {
+  const normalizedName = String(toolCard.name || '').toLowerCase()
+  const knownOperations = new Set(['status', 'start', 'open', 'navigate', 'snapshot', 'act'])
+
+  if (knownOperations.has(normalizedName)) {
+    return normalizedName
   }
 
-  const value = toolArgs.command || toolArgs.cmd
-  return typeof value === 'string' ? value.trim() : ''
+  const operation = getToolArgValue(toolCard.args, [
+    'action',
+    'operation',
+    'command',
+    'method',
+    'step',
+    'tool',
+    'name',
+  ]).toLowerCase()
+
+  if (knownOperations.has(operation)) {
+    return operation
+  }
+
+  const normalizedDetail = String(toolCard.detail || '').trim().toLowerCase()
+  if (knownOperations.has(normalizedDetail)) {
+    return normalizedDetail
+  }
+
+  return ''
+}
+
+function isBrowserLikeTool(toolCard?: ToolCard | null) {
+  if (!toolCard) {
+    return false
+  }
+
+  const normalizedName = String(toolCard.name || '').toLowerCase()
+  return (
+    ['web', 'fetch', 'browser', 'start', 'open', 'navigate', 'snapshot', 'act', 'status'].includes(
+      normalizedName,
+    ) || !!getBrowserOperation(toolCard)
+  )
+}
+
+function formatBrowserActionSummary(toolCard: ToolCard) {
+  const normalizedName = String(toolCard.name || '').toLowerCase()
+  const operation = getBrowserOperation(toolCard) || normalizedName
+  const browserName = getToolArgValue(toolCard.args, ['browser', 'engine', 'name'])
+  const targetLabel = formatToolTargetLabel(getBrowserActionTarget(toolCard.args), 48)
+
+  if (operation === 'status') {
+    return '检查了浏览器状态'
+  }
+
+  if (operation === 'start') {
+    return browserName ? `启动了 ${browserName}` : '启动了浏览器'
+  }
+
+  if (operation === 'open') {
+    return targetLabel ? `打开了 ${targetLabel}` : '打开了页面'
+  }
+
+  if (operation === 'navigate') {
+    return targetLabel ? `跳转到 ${targetLabel}` : '跳转了页面'
+  }
+
+  if (operation === 'snapshot') {
+    return targetLabel ? `读取了 ${targetLabel}` : '读取了页面快照'
+  }
+
+  const actionKind = getBrowserActionKind(toolCard.args)
+  if (actionKind === 'click') {
+    return targetLabel ? `点击了 ${targetLabel}` : '点击了页面元素'
+  }
+  if (actionKind === 'fill' || actionKind === 'input' || actionKind === 'type') {
+    return targetLabel ? `向 ${targetLabel} 输入了内容` : '输入了内容'
+  }
+  if (actionKind === 'scroll') {
+    return targetLabel ? `滚动到了 ${targetLabel}` : '滚动了页面'
+  }
+  if (actionKind === 'select') {
+    return targetLabel ? `选择了 ${targetLabel}` : '选择了选项'
+  }
+  if (actionKind === 'hover') {
+    return targetLabel ? `悬停到 ${targetLabel}` : '悬停到了元素'
+  }
+  if (actionKind === 'press') {
+    const input = formatToolTargetLabel(getBrowserActionInput(toolCard.args), 24)
+    return input ? `触发了按键 ${input}` : '触发了按键'
+  }
+  if (actionKind === 'wait') {
+    return targetLabel ? `等待了 ${targetLabel}` : '等待了页面状态'
+  }
+
+  return targetLabel ? `执行了页面操作 ${targetLabel}` : '执行了页面操作'
+}
+
+function formatBrowserActionDetail(toolCard: ToolCard) {
+  const normalizedName = String(toolCard.name || '').toLowerCase()
+  const operation = getBrowserOperation(toolCard) || normalizedName
+  const browserName = getToolArgValue(toolCard.args, ['browser', 'engine', 'name'])
+  const target = getBrowserActionTarget(toolCard.args)
+
+  if (operation === 'status') {
+    return '检查浏览器当前状态'
+  }
+
+  if (operation === 'start') {
+    return browserName || '启动浏览器会话'
+  }
+
+  if (operation === 'open' || operation === 'navigate') {
+    return target || ''
+  }
+
+  if (operation === 'snapshot') {
+    return target || '读取当前页面快照'
+  }
+
+  const actionKind = getBrowserActionKind(toolCard.args)
+  const input = getBrowserActionInput(toolCard.args)
+
+  if (actionKind === 'click') {
+    return target ? `点击 ${target}` : '点击页面元素'
+  }
+  if (actionKind === 'fill' || actionKind === 'input' || actionKind === 'type') {
+    return target ? `向 ${target} 输入内容` : '输入内容'
+  }
+  if (actionKind === 'scroll') {
+    return target ? `滚动到 ${target}` : '滚动页面'
+  }
+  if (actionKind === 'select') {
+    return target ? `在 ${target} 选择选项` : '选择选项'
+  }
+  if (actionKind === 'hover') {
+    return target ? `悬停到 ${target}` : '悬停到元素'
+  }
+  if (actionKind === 'press') {
+    return input ? `按下 ${input}` : '触发按键'
+  }
+  if (actionKind === 'wait') {
+    return target ? `等待 ${target}` : '等待页面状态'
+  }
+
+  return target || ''
 }
 
 export function useChatMessageUtils(currentSessionKey: Ref<string>) {
@@ -304,6 +671,10 @@ export function useChatMessageUtils(currentSessionKey: Ref<string>) {
     const detail = toolCard.detail || describeToolCall(toolCard.name, toolCard.args)
     const normalizedName = String(toolCard.name || '').toLowerCase()
 
+    if (isBrowserLikeTool(toolCard)) {
+      return formatBrowserActionSummary(toolCard)
+    }
+
     if (normalizedName === 'read' || normalizedName === 'read_file') {
       const pathLike = getPathLikeValue(toolCard.args) || detail
       const fileName = getDisplayFileName(pathLike)
@@ -346,6 +717,10 @@ export function useChatMessageUtils(currentSessionKey: Ref<string>) {
     const detail = toolCard.detail || describeToolCall(toolCard.name, toolCard.args)
     const pathLike = getPathLikeValue(toolCard.args) || detail
     const commandLike = getCommandLikeValue(toolCard.args)
+
+    if (isBrowserLikeTool(toolCard)) {
+      return formatBrowserActionDetail(toolCard)
+    }
 
     if (normalizedName === 'read' || normalizedName === 'read_file') {
       return pathLike ? `from ${pathLike}` : ''
@@ -438,6 +813,11 @@ export function useChatMessageUtils(currentSessionKey: Ref<string>) {
     return trimmed.length > 30 ? `${trimmed.slice(0, 30)}...` : trimmed
   }
 
+  function extractThinkingLog(message: any): ChatMessage['thinkingLog'] | undefined {
+    void message
+    return undefined
+  }
+
   function toDisplayMessages(historyMessages: any[]) {
     const displayMessages = normalizeChatHistoryMessages({
       sessionKey: currentSessionKey.value,
@@ -457,6 +837,7 @@ export function useChatMessageUtils(currentSessionKey: Ref<string>) {
             : 'assistant',
       text: message.text || '',
       toolCards: message.toolCards || [],
+      thinkingLog: extractThinkingLog(message),
     }))
 
     return displayMessages.filter((message, index) => {
@@ -519,6 +900,7 @@ export function useChatMessageUtils(currentSessionKey: Ref<string>) {
     formatToolCardName,
     formatToolStatusText,
     formatToolDetailText,
+    splitThinkingTimelineSteps,
     mergeStreamingText,
     extractMessageText,
     mapRole,

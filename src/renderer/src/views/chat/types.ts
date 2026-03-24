@@ -24,6 +24,7 @@ export interface ChatMessage {
   isStreaming?: boolean
   statusMeta?: ChatStatusMeta
   thinkingState?: 'pending' | 'running' | 'completed'
+  thinkingText?: string
   thinkingLog?: Array<
     | {
         type: 'text'
