@@ -15,6 +15,7 @@ export class TrayManager {
   private tray: Tray | null = null
   private mainWindow: BrowserWindow | null = null
   private _isQuitting = false
+  private themeListenerRegistered = false
 
   /**
    * 初始化托盘，绑定主窗口
@@ -56,20 +57,23 @@ export class TrayManager {
     this.tray = null
   }
 
-  private createTray(): void {
-    this.tray = new Tray(getTrayIcon())
-    this.tray.setToolTip(TRAY_TOOLTIP)
-
-    const contextMenu = Menu.buildFromTemplate([
+  private buildContextMenu(): Menu {
+    return Menu.buildFromTemplate([
       { label: '显示窗口', click: () => this.showWindow() },
       { type: 'separator' },
       { label: '退出', click: () => this.quit() }
     ])
+  }
+
+  private createTray(): void {
+    this.tray = new Tray(getTrayIcon())
+    this.tray.setToolTip(TRAY_TOOLTIP)
 
     // 不使用 setContextMenu，否则 macOS 左键也会弹出菜单
     // 改为右键手动弹出，左键打开窗口
     this.tray.on('right-click', () => {
-      this.tray?.popUpContextMenu(contextMenu)
+      const menu = this.buildContextMenu()
+      this.tray?.popUpContextMenu(menu)
     })
 
     // 左键单击：打开窗口（所有平台统一行为）
@@ -84,7 +88,9 @@ export class TrayManager {
    * macOS 在亮色/暗色模式切换时更新图标颜色
    */
   private setupThemeChangeHandler(): void {
-    if (process.platform !== 'darwin') return
+    if (process.platform !== 'darwin' || this.themeListenerRegistered) return
+
+    this.themeListenerRegistered = true
 
     nativeTheme.on('updated', () => {
       this.tray?.setImage(getTrayIcon())
