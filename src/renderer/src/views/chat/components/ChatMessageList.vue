@@ -131,7 +131,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, ref, onUnmounted, watch } from 'vue'
 import type { ChatMessage, ToolCard } from '../types'
 
 interface UserGroupItem {
@@ -186,6 +186,23 @@ void props
 const scrollContainerRef = ref<HTMLElement | null>(null)
 const collapsedGroupIds = ref<Set<string>>(new Set())
 const expandedToolEntryIds = ref<Set<string>>(new Set())
+
+// 监听消息数量变化，当会话结束（消息从有到无）时清理折叠状态
+let previousMessageCount = props.messages.length
+watch(() => props.messages.length, (newCount) => {
+  // 如果消息从有变为无，说明会话结束/切换，清理所有折叠状态
+  if (previousMessageCount > 0 && newCount === 0) {
+    collapsedGroupIds.value.clear()
+    expandedToolEntryIds.value.clear()
+  }
+  previousMessageCount = newCount
+})
+
+// 组件卸载时清理所有状态，防止内存泄漏
+onUnmounted(() => {
+  collapsedGroupIds.value.clear()
+  expandedToolEntryIds.value.clear()
+})
 
 function normalizeToolDetail(toolCard: ToolCard) {
   const formattedDetail = props.formatToolDetailText(toolCard)
@@ -387,10 +404,13 @@ function isGroupExpanded(groupId: string) {
   if (!group) {
     return false
   }
+  // 如果正在流式传输，则始终展开
   if (group.chain.isStreaming) {
     return true
   }
-  return !collapsedGroupIds.value.has(groupId)
+  // 如果已完成思考，默认折叠（用户点击后才会展开）
+  // 只有当用户显式展开（不在 collapsedGroupIds 中）时才显示
+  return !collapsedGroupIds.value.has(groupId) && group.chain.isStreaming
 }
 
 function toggleGroup(groupId: string) {
